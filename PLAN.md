@@ -10,7 +10,7 @@ Two expectant parents link accounts, swipe on baby names, and get suggestions we
 | UI | Tailwind + shadcn/ui, Framer Motion for swipe cards; visual theme decided later |
 | Backend | Supabase: Auth, Postgres + pgvector, Realtime, Edge Functions |
 | Hosting | Vercel |
-| Auth | Magic link + Google + Apple (Apple needs a paid developer account; can be added later) |
+| Auth | Email and password (Supabase Auth). Magic link, Google and Apple dropped for simplicity |
 | Linking | Invite code (e.g. `BABY-7K2Q`) creating a shared "nursery" |
 | Rating | Tinder-style swipe: right = like, left = dislike |
 | Visibility | Partners only ever see mutual matches |
@@ -60,7 +60,7 @@ Sign-in, create/join nursery by code, filters and surname, Swipe (card shows ful
 
 ## Build phases
 
-1. Foundation: Vite PWA, Supabase project, login, nurseries and invite codes.
+1. Foundation: Vite PWA, Supabase project, email/password login, nurseries and invite codes.
 2. Data: import script, Claude tagging, embeddings.
 3. Core loop: swipe deck, `suggest_names`, match trigger, matches list.
 4. Realtime: in-app match alerts, then web push (iOS needs the app on the home screen).
@@ -69,5 +69,4 @@ Sign-in, create/join nursery by code, filters and surname, Swipe (card shows ful
 
 ## Open caveats
 
-- Apple sign-in costs $99/year; start with magic link + Google if preferred.
 - Tagging about 30k names with Claude is a one-off cost of a few dollars using batch requests.
