@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "demo": "VITE_MOCK=1 VITE_SUPABASE_URL=http://mock.supabase.test VITE_SUPABASE_ANON_KEY=demo vite --host",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview"

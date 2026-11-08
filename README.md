@@ -23,6 +23,8 @@ npm run dev
 
 The app boots without Supabase credentials and shows a notice until they are set.
 
+
+
 ## Database
 
 `supabase/migrations/20261108000000_initial_schema.sql` creates the tables, row level security, match triggers and the `create_nursery` / `join_nursery` RPCs. Apply it with the Supabase CLI (`supabase db push`) or paste it into the SQL editor of a new project.
