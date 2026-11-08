@@ -14,7 +14,7 @@ Two expectant parents link accounts, swipe on baby names, and get suggestions we
 | Linking | Invite code (e.g. `BABY-7K2Q`) creating a shared "nursery" |
 | Rating | Tinder-style swipe: right = like, left = dislike |
 | Visibility | Partners only ever see mutual matches |
-| Dislikes | Hard veto: one partner's dislike hides the name from both |
+| Dislikes | Recorded per person but never block anything: a name one partner disliked can still be shown to the other. A match needs both partners to like the name. Either partner can change their mind later |
 | Filters | Gender (boy/girl/neutral), surname preview, origin/culture |
 | Name data | Public datasets (US SSA, UK ONS), enriched once offline with Claude |
 | Suggestions | Hybrid: pgvector embeddings + feature tags, pre-generated blurbs, no live LLM calls |
@@ -48,7 +48,7 @@ Two expectant parents link accounts, swipe on baby names, and get suggestions we
 ## Suggestion engine: `suggest_names(user, n)`
 
 1. Taste profile = 3 x mean(mutual likes) + 1 x mean(own likes) + 1 x mean(partner likes) - weighted share of dislikes.
-2. Candidates: apply gender/origin filters; exclude already-swiped names and anything the partner disliked.
+2. Candidates: apply gender/origin filters; exclude names this person has already swiped. A name the partner disliked can still appear.
 3. Rank by pgvector distance (`<=>`).
 4. About 20% of each batch is random, so tastes can shift.
 5. Fewer than about 15 likes: serve the fixed diverse starter deck.
