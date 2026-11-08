@@ -6,6 +6,7 @@ Dashboard labels change over time. If a name below doesn't match, look for the c
 2. **Apply the schema.** Open the SQL Editor, paste the contents of each file in `supabase/migrations/` in filename order, and run them one at a time:
    1. `20261108000000_initial_schema.sql`
    2. `20261108000100_nursery_update_columns.sql`
+   3. `20261108000200_table_grants.sql` (newer Supabase projects don't grant table access to signed-in users automatically; without this, every table read fails with "permission denied")
    If the first run complains about the `vector` extension, enable it under Database, Extensions, then run it again.
 3. **Email and password sign-in.** Under Authentication, Providers, make sure Email is enabled. For a two-person app, switch off "Confirm email" so sign-up works immediately.
 4. **Copy the project URL and anon key.** Under Project Settings, API. These two values go into the app as `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (see `app/.env.example`). The anon key is designed to be public: row level security protects the data. Never use the `service_role` key in the app.
