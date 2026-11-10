@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
-import type { ShortlistRow } from '../lib/types'
+import { knownMeaning, type ShortlistRow } from '../lib/types'
 import { describeError } from './errors'
 import { fullName } from './names'
 import { EmptyState, focusRing } from './ui'
@@ -117,7 +117,7 @@ export default function DuelTab({
         className={`flex min-h-44 flex-1 flex-col items-center justify-center gap-2 rounded-3xl border-2 border-neutral-200 bg-white p-4 text-center shadow-sm transition active:scale-95 hover:border-rose-600 disabled:opacity-60 motion-reduce:transition-none motion-reduce:active:scale-100 ${focusRing}`}
       >
         <span className="text-xl font-semibold leading-tight text-neutral-900">{fullName(r.name, surname)}</span>
-        {r.meaning && <span className="text-sm text-neutral-600">{r.meaning}</span>}
+        {knownMeaning(r.meaning) && <span className="text-sm text-neutral-600">{knownMeaning(r.meaning)}</span>}
       </button>
     )
   }

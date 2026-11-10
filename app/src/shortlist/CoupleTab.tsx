@@ -1,4 +1,4 @@
-import type { ShortlistRow } from '../lib/types'
+import { knownMeaning, type ShortlistRow } from '../lib/types'
 import { fullName } from './names'
 import { EmptyState, GenderChip } from './ui'
 
@@ -51,7 +51,7 @@ export default function CoupleTab({ rows, surname }: { rows: ShortlistRow[]; sur
                   </p>
                   <GenderChip gender={r.gender} />
                 </div>
-                {r.meaning && <p className="text-sm text-neutral-600">{r.meaning}</p>}
+                {knownMeaning(r.meaning) && <p className="text-sm text-neutral-600">{knownMeaning(r.meaning)}</p>}
               </div>
             </li>
           )

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import type { Gender, ScreenProps } from '../lib/types'
+import { knownMeaning, type Gender, type ScreenProps } from '../lib/types'
 import { describeError } from '../shortlist/errors'
 import { fullName } from '../shortlist/names'
 import { EmptyState, ErrorBox, GenderChip, SkeletonList, focusRing } from '../shortlist/ui'
@@ -103,7 +103,7 @@ export default function MatchesScreen({ nursery }: ScreenProps) {
                 <GenderChip gender={n.gender} />
               </div>
               {n.origins.length > 0 && <p className="mt-1 text-xs text-neutral-500">{n.origins.join(', ')}</p>}
-              {n.meaning && <p className="mt-2 text-sm text-neutral-800">{n.meaning}</p>}
+              {knownMeaning(n.meaning) && <p className="mt-2 text-sm text-neutral-800">{knownMeaning(n.meaning)}</p>}
               {n.blurb && <p className="mt-1 text-sm text-neutral-600">{n.blurb}</p>}
             </li>
           ))}
