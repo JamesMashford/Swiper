@@ -10,7 +10,9 @@ import ShortlistScreen from './screens/ShortlistScreen'
 import SwipeScreen from './screens/SwipeScreen'
 import TabBar from './ui/TabBar'
 import { TABS, type ScreenProps, type TabId } from './lib/types'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useMatchAlerts } from './realtime/useMatchAlerts'
+import MatchOverlay from './ui/MatchOverlay'
 
 function Home() {
   const { session, loading, signOut } = useAuth()
@@ -70,19 +72,42 @@ function tabFromHash(): TabId {
 
 function Shell(props: ScreenProps) {
   const [tab, setTab] = useState<TabId>(tabFromHash)
+  const { current, unseen, dismiss, markSeen } = useMatchAlerts(props.nursery.id)
+
   const change = (next: TabId) => {
+    if (next === 'matches' || tab === 'matches') markSeen()
     window.location.hash = next
     setTab(next)
   }
+
+  // Lets screens navigate by setting the hash and firing hashchange.
+  useEffect(() => {
+    const onHash = () => setTab(tabFromHash())
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
+
   return (
     <div className="flex h-full flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {tab === 'swipe' && <SwipeScreen {...props} />}
+        {tab === 'swipe' && <SwipeScreen {...props} onNavigate={change} />}
         {tab === 'matches' && <MatchesScreen {...props} />}
         {tab === 'shortlist' && <ShortlistScreen {...props} />}
         {tab === 'settings' && <SettingsScreen {...props} />}
       </div>
-      <TabBar active={tab} onChange={change} />
+      <TabBar active={tab} onChange={change} badge={{ matches: unseen && tab !== 'matches' }} />
+      {current && (
+        <MatchOverlay
+          key={current.nameId}
+          name={current.name}
+          surname={props.nursery.surname}
+          onSee={() => {
+            dismiss()
+            change('matches')
+          }}
+          onKeep={dismiss}
+        />
+      )}
     </div>
   )
 }
