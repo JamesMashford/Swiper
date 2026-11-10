@@ -113,3 +113,34 @@ All `@example.com`, all test data, none deleted (the anon key cannot delete user
 - (every address above is `@example.com`; the mock-mode runs of `full-flow.mjs` created nothing live)
 
 Test data left on the live project: nurseries created by these accounts (surnames including a 100,000-character one and hostile-string ones), one real-Realtime match on `ZZTest One` for the `uia`/`uib` pairs, and swipes/matches from `live1.py`/`live2.py`. All belong to the accounts above.
+
+---
+
+## Status after the fix round (added by the lead, 10 Nov 2026)
+
+Every finding below was fixed unless marked otherwise. "Re-verified" means the lead re-ran the check independently after the fix.
+
+| ID | Status | How it was checked |
+|---|---|---|
+| F1 invite code strength, oracle, throttling | Fixed: 8-character codes, one generic message for wrong and full, lockout after 10 failures in 15 minutes | DB tests (487 assertions, re-verified). Not run on the live project. |
+| F2 lost match on simultaneous likes | Fixed: per-nursery advisory lock in both match triggers | `supabase/tests/concurrency_race.sh`: 0 matches without the lock, 1 with it (re-verified) |
+| F3 partner ranking recoverable | Fixed: `combined_score` removed from `shortlist_scores()` | Column list test (re-verified) |
+| F4 offline replaces the app | Fixed: banner plus Retry, shell stays mounted; first-load error has Retry and Sign out | UI suite offline scenarios (re-verified) |
+| F5 text limits and empty gender filter | Fixed with `NOT VALID` checks (existing oversize test rows on the live project are exempt, new writes are checked); sign-up truncates the display name | Applied on top of planted 100,000-character rows (re-verified) |
+| F6 empty display name in Settings | Fixed | UI suite with 1.5 s profile latency |
+| F7 false "seen every name" | Fixed | UI suite `deck-end` check |
+| F8 negative rank scores | Fixed: `row_number()` and gap-free positions | DB test |
+| F9 stale matches, no way to leave | Fixed: member-delete trigger, `leave_nursery()`, `rotate_invite_code()`, Settings buttons | DB tests and UI `settings-flows` |
+| F10 dialog focus trap | Fixed: trap, `inert`, Escape, focus restore | UI suite |
+| F11 stacked overlays | Fixed: one overlay, "N new matches" | UI suite |
+| F12 accessibility basics | Fixed: labels, 44 px targets, focus rings, contrast, badge name | UI suite and axe (no violations at 390x844) |
+| F13 server accepts 7-character passwords | **Not fixable in code.** Set the minimum password length to 8 in the Supabase dashboard (documented in `docs/supabase-setup.md`) | Not applicable |
+| F14 landmarks and headings | Fixed | UI suite and axe |
+| I1 raw error text | Fixed: shared friendly error helper | UI suite |
+| I3 reduced motion disables dragging | Left as is (buttons and arrow keys work) | n/a |
+| I4 `ZZTest` names | Handled: the final SQL deletes them | Not run on the live project |
+| I5 frame headers | Added to `app/vercel.json` | No suite check; not deployed |
+
+Totals after the fixes: DB 487 assertions pass; UI suite 370 checks pass (185 at each viewport), 0 failures; axe reports no violations at 390x844 (not run at 360x640); `npm run build` passes; `npm run lint` shows only the one allowed warning.
+
+Still not tested: the full live flow (blocked until the SQL is applied; run `node scripts/e2e/full-flow.mjs` afterwards), the migration on the real project and real pgvector, real iPhone install, VoiceOver/TalkBack, non-Chromium browsers, and Realtime under poor mobile networks.
