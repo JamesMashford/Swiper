@@ -131,6 +131,24 @@ async function touchDrag(cdp, page, dx, { y, from } = {}) {
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
 }
 
+// Contrast ratio of an element's text colour against white (cards are white). Colours may be oklch(),
+// so a 1x1 canvas converts them to sRGB first.
+async function contrastOnWhite(locator) {
+  return locator.evaluate((el) => {
+    const px = (css) => {
+      const cv = document.createElement('canvas'); cv.width = cv.height = 1
+      const g = cv.getContext('2d'); g.fillStyle = css; g.fillRect(0, 0, 1, 1)
+      return [...g.getImageData(0, 0, 1, 1).data].slice(0, 3)
+    }
+    const lum = ([r, g, b]) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4 }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b) }
+    const a = lum(px(getComputedStyle(el).color)), b = lum([255, 255, 255])
+    return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
+  })
+}
+const headingLevels = (page) => page.evaluate(() => [...document.querySelectorAll('h1,h2,h3,h4,h5,h6')].filter((h) => h.getClientRects().length).map((h) => Number(h.tagName[1])))
+const orderOk = (levels) => levels.length > 0 && levels[0] === 1 && levels.every((l, i) => i === 0 || l <= levels[i - 1] + 1)
+const unlabeledInputs = (page) => page.evaluate(() => [...document.querySelectorAll('input')].filter((i) => !i.labels?.length && !i.getAttribute('aria-label') && !i.getAttribute('aria-labelledby')).map((i) => i.id || i.placeholder))
+
 const VIEWPORTS = [
   { width: 390, height: 844 },
   { width: 360, height: 640 },
@@ -153,6 +171,20 @@ for (const vp of VIEWPORTS) {
     c('sign-in touch targets >= 44px', small.length === 0, small.join('; '))
     c('sign-in focus indicators visible on every control', (await focusIndicatorGaps(page, 8)).length === 0, (await focusIndicatorGaps(page, 8)).join('; '))
 
+    const labelTexts = await page.evaluate(() => [...document.querySelectorAll('label')].map((l) => l.textContent.trim()))
+    c('sign-in has visible labels Email and Password', labelTexts.includes('Email') && labelTexts.includes('Password'), labelTexts.join(','))
+    const toggle = await page.getByRole('button', { name: /Create an account/ }).boundingBox()
+    c('"New here? Create an account" toggle is at least 44px tall', toggle.height >= 43.5, `${Math.round(toggle.height)}px`)
+    c('exactly one h1 on sign-in', (await headingLevels(page)).filter((l) => l === 1).length === 1)
+    // I1: a network failure never shows library text
+    mock.offline = true
+    await page.getByPlaceholder('Email').fill('a@x.test')
+    await page.getByPlaceholder('Password').fill('password1')
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+    await page.getByRole('alert').waitFor()
+    const offlineMsg = await page.getByRole('alert').innerText()
+    c('sign-in while offline shows a friendly message, not "Failed to fetch"', /can't reach the server/i.test(offlineMsg) && !/fetch|TypeError/i.test(offlineMsg), offlineMsg)
+    mock.offline = false
     // wrong password
     await signIn(page, 'a@x.test', 'wrongpass1')
     const alert = page.getByRole('alert')
@@ -162,6 +194,9 @@ for (const vp of VIEWPORTS) {
 
     // short password in sign-up mode: native validation blocks the request
     await page.getByRole('button', { name: /Create an account/ }).click()
+    c('sign-up form: every input labelled', (await unlabeledInputs(page)).length === 0, (await unlabeledInputs(page)).join(','))
+    c('sign-up form: touch targets >= 44px', (await smallTargets(page)).length === 0, (await smallTargets(page)).join('; '))
+    c('sign-up name input has maxLength 60', (await page.locator('#auth-name').getAttribute('maxlength')) === '60')
     await page.getByPlaceholder('Your name').fill('X')
     await page.getByPlaceholder('Email').fill('new@x.test')
     await page.getByPlaceholder('Password').fill('short')
@@ -197,18 +232,36 @@ for (const vp of VIEWPORTS) {
     c('nursery setup touch targets >= 44px', small.length === 0, small.join('; '))
     const unlabeled = await page.evaluate(() => [...document.querySelectorAll('input')].filter((i) => !i.labels?.length && !i.getAttribute('aria-label')).map((i) => i.placeholder))
     c('nursery setup inputs have labels', unlabeled.length === 0, unlabeled.join(', '))
-    await page.getByPlaceholder('BABY-7K2Q').fill('baby-nope')
+    await page.getByPlaceholder('BABY-7K2Q9XMD').fill('baby-nope')
     await page.getByRole('button', { name: 'Join nursery' }).click()
     await page.getByRole('alert').waitFor()
-    c('unknown code -> error', /not found/i.test(await page.getByRole('alert').innerText()))
-    await page.getByPlaceholder('BABY-7K2Q').fill('  baby-full ')
+    const wrongMsg = await page.getByRole('alert').innerText()
+    c('unknown code (ok:false) shows the server message', /did not work/i.test(wrongMsg) && !/not found/i.test(wrongMsg), wrongMsg)
+    await page.getByPlaceholder('BABY-7K2Q9XMD').fill('  baby-full ')
     await page.getByRole('button', { name: 'Join nursery' }).click()
-    await page.waitForFunction(() => /two members/i.test(document.querySelector('[role=alert]')?.textContent || ''))
-    c('full nursery -> error', true)
+    await page.waitForFunction(() => /did not work/i.test(document.querySelector('[role=alert]')?.textContent || ''))
+    c('full nursery (ok:false) shows the same generic message', true)
+    c('nursery setup: surname input maxLength 60', (await page.locator('#setup-surname').getAttribute('maxlength')) === '60')
+    c('nursery setup: no hard-coded code length (maxLength absent on code input)', (await page.locator('#setup-code').getAttribute('maxlength')) === null)
+    mock.offline = true
+    await page.getByRole('button', { name: 'Join nursery' }).click()
+    await page.waitForFunction(() => /can't reach the server/i.test(document.querySelector('[role=alert]')?.textContent || ''))
+    c('join while offline shows a friendly message', !/fetch/i.test(await page.getByRole('alert').innerText()))
+    mock.offline = false
+    mock.joinFailures.set(mock.userByEmail('solo@x.test').id, 10)
+    await page.getByRole('button', { name: 'Join nursery' }).click()
+    await page.waitForFunction(() => /too many attempts/i.test(document.querySelector('[role=alert]')?.textContent || ''))
+    c('lockout (ok:false) message is shown', true)
+    mock.joinFailures.clear()
+    mock.tableDelay.profiles = 1500 // F6: the profile arrives late
     await page.getByPlaceholder('Surname (for previews)').fill(`O'Brien <b>bold</b> "q"`)
     await page.getByRole('button', { name: 'Create nursery' }).click()
     await tab(page, 'Swipe').waitFor()
     c('create nursery enters the shell', true)
+    await tab(page, 'Settings').click()
+    c('F6: display name is filled in when Settings opens right after create (slow profile fetch)', (await page.locator('#display-name').inputValue()) === 'Solo', `"${await page.locator('#display-name').inputValue()}"`)
+    c('F6: surname field shows the new surname', (await page.locator('#surname').inputValue()).startsWith("O'Brien"))
+    await tab(page, 'Swipe').click()
     await page.getByTestId('top-card').waitFor()
     const label = await page.getByTestId('top-card').getAttribute('aria-label')
     c('surname with quotes/HTML is shown as text on the card', /O'Brien <b>bold<\/b> "q"/.test(label), label)
@@ -223,6 +276,12 @@ for (const vp of VIEWPORTS) {
     await tab(page, 'Swipe').waitFor()
     await page.getByTestId('top-card').waitFor()
 
+    c('single <main> landmark in the signed-in shell', (await page.locator('main').count()) === 1)
+    c('swipe: exactly one h1 (visually hidden) and heading order is valid', orderOk(await headingLevels(page)) && (await page.locator('h1').count()) === 1, JSON.stringify(await headingLevels(page)))
+    const surnameC = await contrastOnWhite(page.getByTestId('top-card').locator('h2 > span'))
+    c('swipe card surname contrast >= 4.5:1', surnameC >= 4.5, surnameC.toFixed(2))
+    const meaningLbl = page.getByTestId('top-card').getByText('Meaning', { exact: true })
+    if (await meaningLbl.count()) { const mc = await contrastOnWhite(meaningLbl); c('swipe card "Meaning" label contrast >= 4.5:1', mc >= 4.5, mc.toFixed(2)) }
     c('swipe: no horizontal scroll', await noHScroll(page))
     const smallSwipe = await smallTargets(page)
     c('swipe touch targets >= 44px', smallSwipe.length === 0, smallSwipe.join('; '))
@@ -236,6 +295,9 @@ for (const vp of VIEWPORTS) {
       c(`tab "${n}": hash updated`, (await page.evaluate(() => location.hash)) === '#' + n.toLowerCase())
       c(`tab "${n}": aria-current set`, (await tab(page, n).getAttribute('aria-current')) === 'page')
       c(`tab "${n}": no horizontal scroll`, await noHScroll(page))
+      const lv = await headingLevels(page)
+      c(`tab "${n}": one <main>, one h1, no skipped heading levels`, (await page.locator('main').count()) === 1 && (await page.locator('h1').count()) === 1 && orderOk(lv), JSON.stringify(lv))
+      if (n === 'Settings') c('Settings: every input has a label', (await unlabeledInputs(page)).length === 0, (await unlabeledInputs(page)).join(','))
       const small = await smallTargets(page)
       c(`tab "${n}": touch targets >= 44px`, small.length === 0, small.join('; '))
       const gaps = await focusIndicatorGaps(page, 45)
@@ -266,6 +328,11 @@ for (const vp of VIEWPORTS) {
     await tab(page, 'Settings').click()
     c('Settings shows invite code', (await page.getByTestId('invite-code').innerText()) === 'BABY-TEST')
     c('Settings shows partner', await page.getByText('Linked with Bob').isVisible())
+    c('Settings: surname and display name have maxLength 60', (await page.locator('#surname').getAttribute('maxlength')) === '60' && (await page.locator('#display-name').getAttribute('maxlength')) === '60')
+    c('Settings: display name is filled in with the saved name', (await page.locator('#display-name').inputValue()) === 'Alice')
+    await page.locator('#surname').focus()
+    const ring = await page.evaluate(() => { const cs = getComputedStyle(document.activeElement); return `${cs.outlineStyle} ${cs.outlineWidth} off ${cs.outlineOffset}` })
+    c('Settings: focused input shows a 2px outline with offset (outline-none no longer cancels it)', /solid 2px off 2px/.test(ring), ring)
     // surname edit persists across reload
     await page.locator('#surname').fill('Jones-Ñandú')
     await page.getByRole('button', { name: 'Save' }).first().click()
@@ -366,6 +433,11 @@ for (const vp of VIEWPORTS) {
     await dlg.waitFor({ timeout: 5000 })
     c('match alert dialog appears (poll path)', /Name38/.test(await dlg.innerText()))
     c('dialog moves focus to "See matches"', (await page.evaluate(() => document.activeElement?.textContent)) === 'See matches')
+    const mainInert = await page.evaluate(() => document.querySelector('main').inert && document.querySelector('nav[aria-label=Main]').inert)
+    c('F10: page behind the dialog (main + tab bar) is inert while it is open', mainInert === true)
+    await page.keyboard.press('Shift+Tab')
+    await page.keyboard.press('Shift+Tab')
+    c('F10: Shift+Tab wraps inside the dialog', await page.evaluate(() => document.querySelector('[role=dialog]').contains(document.activeElement)))
     await page.keyboard.press('Tab')
     await page.keyboard.press('Tab')
     await page.keyboard.press('Tab')
@@ -375,7 +447,11 @@ for (const vp of VIEWPORTS) {
     await dlg.waitFor({ state: 'detached' })
     c('Escape closes the match dialog', true)
     c('focus returns somewhere sensible after closing dialog (not <body>)', (await page.evaluate(() => document.activeElement?.tagName)) !== 'BODY', await page.evaluate(() => document.activeElement?.tagName))
+    c('F10: focus is restored to the element focused before the dialog (Like button)', (await page.evaluate(() => document.activeElement?.getAttribute('aria-label'))) === 'Like', await page.evaluate(() => document.activeElement?.outerHTML.slice(0, 60)))
+    c('F10: page is no longer inert after closing', (await page.evaluate(() => document.querySelector('main').inert)) === false)
     c('Matches tab shows unseen badge', (await tab(page, 'Matches').locator('span').count()) > 0)
+    c('F12: unseen badge has an accessible name ("new match" in the Matches button label)', (await page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: /Matches.*new match/i }).count()) === 1)
+    c('F12: no aria-label="new" on an empty span', (await page.locator('span[aria-label="new"]').count()) === 0)
     await tab(page, 'Matches').click()
     await page.getByText('Name38').waitFor()
     c('Matches lists the new match', true)
@@ -472,6 +548,21 @@ for (const vp of VIEWPORTS) {
     c('exactly one sub-tab is aria-selected', sel === 1)
     const panelLabelled = await page.evaluate(() => { const p = document.querySelector('[role=tabpanel]'); return !!(p && (p.getAttribute('aria-labelledby') || p.getAttribute('aria-label'))) })
     c('tabpanel is labelled / tabs have aria-controls', panelLabelled, 'role=tabpanel has no aria-labelledby; role=tab has no aria-controls')
+    const wiring = await page.evaluate(() => {
+      const panel = document.querySelector('[role=tabpanel]')
+      const tabs = [...document.querySelectorAll('[role=tab]')]
+      const sel = tabs.find((t) => t.getAttribute('aria-selected') === 'true')
+      return { controls: tabs.every((t) => document.getElementById(t.getAttribute('aria-controls') || '_') === panel), labelled: panel.getAttribute('aria-labelledby') === sel.id, n: tabs.length }
+    })
+    c('F14: every sub-tab aria-controls the tabpanel and the panel is aria-labelledby the selected tab', wiring.controls && wiring.labelled && wiring.n === 3, JSON.stringify(wiring))
+    await page.getByRole('tab', { name: "Couple's ranking" }).focus()
+    await page.keyboard.press('ArrowLeft')
+    c('F14: ArrowLeft moves to the previous sub-tab', (await page.getByRole('tab', { name: 'Head to head' }).getAttribute('aria-selected')) === 'true')
+    await page.getByRole('tab', { name: 'Head to head' }).click()
+    await page.getByText('Tap the name you like more.').waitFor()
+    const dl = await headingLevels(page)
+    c('F14: Head to head has h1 then h2 (no h3 straight after h1)', orderOk(dl) && !dl.includes(3), JSON.stringify(dl))
+    await page.getByRole('tab', { name: "Couple's ranking" }).click()
     // empty state
     mock.state.matches.length = 0
     await page.getByRole('tab', { name: 'Rank', exact: true }).click()
@@ -516,13 +607,24 @@ for (const vp of VIEWPORTS) {
     await page.waitForTimeout(10000) // postgrest-js retries failed GETs for a few seconds before reporting an error
     const shellStillThere = (await page.getByRole('navigation', { name: 'Main' }).count()) > 0
     c('going offline then foregrounding keeps the app shell (tab bar) on screen', shellStillThere, shellStillThere ? '' : 'whole app replaced by a bare error (no tab bar, no Retry, no Sign out)')
-    if (!shellStillThere) {
-      c('error screen offers a Retry or Sign-out action', (await page.getByRole('button').count()) > 0, 'no buttons on the full-screen error')
-    }
+    const banner = page.getByTestId('error-banner')
+    c('F4: a background refresh error shows a small banner', (await banner.count()) === 1)
+    const bannerText = (await banner.innerText().catch(() => '')) || ''
+    c('F4/I1: banner text is friendly (no "TypeError" / "Failed to fetch")', /can't reach the server/i.test(bannerText) && !/TypeError|failed to fetch/i.test(bannerText), bannerText.replace(/\s+/g, ' '))
+    c('F4: the current screen stays mounted under the banner (Settings form still there)', await page.locator('#surname').isVisible())
+    c('F4: banner has Retry and Dismiss buttons', (await banner.getByRole('button', { name: 'Retry' }).count()) === 1 && (await banner.getByRole('button', { name: 'Dismiss' }).count()) === 1)
+    await banner.getByRole('button', { name: 'Dismiss' }).click()
+    c('F4: banner can be dismissed', (await page.getByTestId('error-banner').count()) === 0)
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')))
+    await page.getByTestId('error-banner').waitFor({ timeout: 20000 })
+    c('F4: the next visibility change retries and shows the banner again', true)
     mock.offline = false; await ctx.setOffline(false)
+    await page.getByTestId('error-banner').getByRole('button', { name: 'Retry' }).click()
+    await page.getByTestId('error-banner').waitFor({ state: 'detached', timeout: 8000 })
+    c('F4: Retry button recovers and clears the banner', (await page.getByRole('navigation', { name: 'Main' }).count()) > 0)
     await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')))
     await page.waitForTimeout(1500)
-    c('app recovers by itself after going back online', (await page.getByRole('navigation', { name: 'Main' }).count()) > 0)
+    c('app recovers by itself after going back online', (await page.getByRole('navigation', { name: 'Main' }).count()) > 0 && (await page.getByTestId('error-banner').count()) === 0)
   })
 
   // ============ 9. reduced motion ============
@@ -541,6 +643,89 @@ for (const vp of VIEWPORTS) {
     c('reduced motion: card is not draggable (buttons/keys are the way)', (await page.getByTestId('top-card').getAttribute('aria-label')).startsWith(cur + ' '))
     const anim = await page.evaluate(() => document.getAnimations().filter((a) => a.playState === 'running').length)
     c('reduced motion: no running CSS animations on the swipe screen', anim === 0, `${anim} running`)
+  })
+
+  // ============ 9b. several matches at once ============
+  await scenario(`multi-match ${tag}`, vp, async ({ page, mock, c }) => {
+    const { nid } = await seedCouple(mock, { surname: 'Lee', matches: [1] })
+    await goto(page)
+    await signIn(page, 'a@x.test')
+    await page.getByTestId('top-card').waitFor()
+    const fire = () => page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')))
+    await page.waitForTimeout(400)
+    mock.addMatch(nid, 5); mock.addMatch(nid, 6); mock.addMatch(nid, 7); mock.addMatch(nid, 8)
+    await fire()
+    const dlg = page.getByRole('dialog')
+    await dlg.waitFor({ timeout: 6000 })
+    await page.waitForTimeout(500)
+    const text = await dlg.innerText()
+    c('F11: four matches at once give ONE overlay', (await page.getByRole('dialog').count()) === 1)
+    c('F11: overlay says "4 new matches" and lists the names', /4 new matches/.test(text) && ['Name5 Lee', 'Name6 Lee', 'Name7 Lee', 'Name8 Lee'].every((n) => text.includes(n)), text.replace(/\s+/g, ' '))
+    c('F11: the multi overlay has a "See matches" button', (await dlg.getByRole('button', { name: 'See matches' }).count()) === 1)
+    c('F11: no horizontal scroll with the list', await noHScroll(page))
+    await page.keyboard.press('Escape')
+    await dlg.waitFor({ state: 'detached' })
+    await page.waitForTimeout(300)
+    c('F11: dismissing closes everything (no second overlay)', (await page.getByRole('dialog').count()) === 0)
+    mock.addMatch(nid, 9)
+    await fire()
+    await dlg.waitFor({ timeout: 6000 })
+    c('F11: a single new match shows its name, not a count', /Name9 Lee/.test(await dlg.innerText()) && !/new matches/.test(await dlg.innerText()))
+    await dlg.getByRole('button', { name: 'See matches' }).click()
+    await dlg.waitFor({ state: 'detached' })
+    c('F11: "See matches" opens the Matches tab', (await tab(page, 'Matches').getAttribute('aria-current')) === 'page')
+    c('F10: focus after "See matches" is inside the page, not on <body>', (await page.evaluate(() => document.activeElement?.tagName)) !== 'BODY')
+  })
+
+  // ============ 9c. first-load failure ============
+  await scenario(`first-load-error ${tag}`, vp, async ({ page, mock, c }) => {
+    await seedCouple(mock)
+    mock.fail = ({ path }) => path === '/rest/v1/nurseries'
+    await goto(page)
+    await signIn(page, 'a@x.test')
+    await page.getByRole('button', { name: 'Retry' }).waitFor()
+    c('F4: a first-load failure shows a full-screen error with Retry and Sign out', (await page.getByRole('button', { name: 'Sign out' }).count()) === 1 && (await page.getByRole('navigation', { name: 'Main' }).count()) === 0)
+    c('F4: the first-load error screen has an h1 and one main', (await page.locator('main h1').count()) === 1 && (await page.locator('main').count()) === 1)
+    mock.fail = null
+    await page.getByRole('button', { name: 'Retry' }).click()
+    await tab(page, 'Swipe').waitFor()
+    c('F4: Retry on the error screen loads the app', true)
+    mock.fail = ({ path }) => path === '/rest/v1/nurseries'
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')))
+    await page.getByTestId('error-banner').waitFor()
+    c('F4: a later failure leaves the shell and the swipe card in place', (await page.getByTestId('top-card').count()) === 1 && (await tab(page, 'Swipe').count()) === 1)
+    mock.fail = null
+  })
+
+  // ============ 9d. settings: new code, leave nursery ============
+  await scenario(`settings-flows ${tag}`, vp, async ({ page, mock, c }) => {
+    const { nid } = await seedCouple(mock, { matches: [1, 2] })
+    let dialogs = 0
+    page.on('dialog', (d) => { dialogs++; d.dismiss() })
+    await goto(page, '#settings')
+    await signIn(page, 'a@x.test')
+    await page.getByTestId('invite-code').waitFor()
+    const before = await page.getByTestId('invite-code').innerText()
+    await page.getByRole('button', { name: 'New invite code' }).click()
+    await page.getByTestId('rotated-code').waitFor()
+    const shown = await page.getByTestId('rotated-code').innerText()
+    c('rotate: calls rotate_invite_code once', mock.rotateCalls === 1)
+    c('rotate: new BABY- code is shown (8 characters) and replaces the old one', /^BABY-[A-Z0-9]{8}$/.test(shown) && shown !== before && (await page.getByTestId('invite-code').innerText()) === shown, `${before} -> ${shown}`)
+    c('rotate: explains the old code stops working', /old code (no longer works|stops working)/i.test(await page.locator('body').innerText()))
+    c('rotate: no horizontal scroll', await noHScroll(page))
+    // leave: two steps
+    await page.getByRole('button', { name: 'Leave nursery' }).click()
+    c('leave: first click only asks for confirmation (no rpc yet)', mock.leaveCalls === 0 && (await page.getByRole('button', { name: 'Yes, leave nursery' }).count()) === 1)
+    c('leave: explains matches are cleared', /clears the matches you shared/i.test(await page.locator('body').innerText()))
+    await page.getByRole('button', { name: 'Cancel' }).click()
+    c('leave: Cancel backs out without leaving', mock.leaveCalls === 0 && (await page.getByRole('button', { name: 'Yes, leave nursery' }).count()) === 0)
+    c('leave: touch targets >= 44px', (await smallTargets(page)).length === 0, (await smallTargets(page)).join('; '))
+    await page.getByRole('button', { name: 'Leave nursery' }).click()
+    await page.getByRole('button', { name: 'Yes, leave nursery' }).click()
+    await page.getByRole('heading', { name: 'Set up your nursery' }).waitFor({ timeout: 5000 })
+    c('leave: calls leave_nursery and returns to the nursery setup screen', mock.leaveCalls === 1)
+    c('leave: used an in-page confirmation, not window.confirm', dialogs === 0)
+    c('leave: the shared matches were cleared', mock.state.matches.filter((m) => m.nursery_id === nid).length === 0)
   })
 
   // ============ 10. sign out / other user ============

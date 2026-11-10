@@ -114,8 +114,8 @@ export default function SettingsScreen({
     run('rotate', async () => {
       const { data, error: err } = await supabase.rpc('rotate_invite_code')
       if (err) return friendlyError(err.message)
-      setRotated(typeof data === 'string' ? data : null)
       await refreshNursery()
+      setRotated(typeof data === 'string' ? data : null)
       return null
     })
 

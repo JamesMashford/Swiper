@@ -40,7 +40,8 @@ export default function MatchOverlay({ names, surname, onSee, onKeep }: Props) {
     primary.current?.focus()
     return () => {
       // Give focus back to where it was; if that screen is gone, to the page itself.
-      const back = opener instanceof HTMLElement && opener.isConnected ? opener : null
+      const back =
+        opener instanceof HTMLElement && opener !== document.body && opener.isConnected ? opener : null
       ;(back ?? document.getElementById('main'))?.focus()
     }
   }, [opener])
