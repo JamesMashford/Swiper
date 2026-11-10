@@ -12,6 +12,7 @@ const POLL_MS = 20_000
  * the hook starts are treated as already known and never alert.
  */
 export function useMatchAlerts(nurseryId: string) {
+  // Every match that arrived since the overlay was last closed; they show together as one overlay.
   const [queue, setQueue] = useState<MatchAlert[]>([])
   const [unseen, setUnseen] = useState(false)
 
@@ -78,8 +79,9 @@ export function useMatchAlerts(nurseryId: string) {
     }
   }, [nurseryId])
 
-  const dismiss = useCallback(() => setQueue((q) => q.slice(1)), [])
+  /** Closes the overlay for every match that is waiting, not just the first. */
+  const dismiss = useCallback(() => setQueue([]), [])
   const markSeen = useCallback(() => setUnseen(false), [])
 
-  return { current: queue[0] ?? null, unseen, dismiss, markSeen }
+  return { alerts: queue, unseen, dismiss, markSeen }
 }

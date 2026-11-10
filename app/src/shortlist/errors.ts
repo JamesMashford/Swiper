@@ -1,3 +1,5 @@
+import { friendlyError } from '../lib/errors'
+
 type Err = { code?: string; message: string } | null
 type Res = { error: Err; status?: number }
 
@@ -10,7 +12,7 @@ export function describeError(res: Res): string | null {
   if (e.code === 'PGRST202' || res.status === 404 || /could not find the function/i.test(e.message)) {
     return MISSING_RPC
   }
-  return e.message || 'Something went wrong'
+  return friendlyError(e.message)
 }
 
 /** Saves run one after another; screens wait for them before reloading. */

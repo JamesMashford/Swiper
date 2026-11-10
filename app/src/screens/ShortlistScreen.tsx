@@ -1,5 +1,5 @@
 import { MotionConfig } from 'framer-motion'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { supabase } from '../lib/supabase'
 import type { ScreenProps, ShortlistRow } from '../lib/types'
 import CoupleTab from '../shortlist/CoupleTab'
@@ -42,6 +42,17 @@ export default function ShortlistScreen({ nursery }: ScreenProps) {
     await fetchRows()
   }, [fetchRows])
 
+  const onTabKey = (e: KeyboardEvent<HTMLButtonElement>) => {
+    const at = SUBTABS.findIndex((t) => t.id === tab)
+    const to =
+      e.key === 'ArrowRight' ? at + 1 : e.key === 'ArrowLeft' ? at - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? SUBTABS.length - 1 : null
+    if (to === null) return
+    e.preventDefault()
+    const next = SUBTABS[(to + SUBTABS.length) % SUBTABS.length]
+    select(next.id)
+    document.getElementById(`sl-tab-${next.id}`)?.focus()
+  }
+
   const select = (next: SubTab) => {
     setTab(next)
     setRows(null)
@@ -62,9 +73,13 @@ export default function ShortlistScreen({ nursery }: ScreenProps) {
           {SUBTABS.map((t) => (
             <button
               key={t.id}
+              id={`sl-tab-${t.id}`}
               role="tab"
               type="button"
               aria-selected={tab === t.id}
+              aria-controls="sl-panel"
+              tabIndex={tab === t.id ? 0 : -1}
+              onKeyDown={onTabKey}
               onClick={() => select(t.id)}
               className={`min-h-11 rounded-lg px-1 text-sm leading-tight ${focusRing} ${
                 tab === t.id ? 'bg-white font-semibold text-rose-600 shadow-sm' : 'text-neutral-600'
@@ -75,7 +90,7 @@ export default function ShortlistScreen({ nursery }: ScreenProps) {
           ))}
         </div>
 
-        <div role="tabpanel">
+        <div role="tabpanel" id="sl-panel" aria-labelledby={`sl-tab-${tab}`}>
           {error && <ErrorBox message={error} onRetry={() => select(tab)} />}
           {!error && !rows && <SkeletonList />}
           {!error && rows && tab === 'rank' && <RankTab rows={rows} surname={nursery.surname} />}

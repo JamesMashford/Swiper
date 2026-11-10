@@ -1,6 +1,7 @@
 import type { Session } from '@supabase/supabase-js'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { AuthContext, type AuthState } from './context'
+import { friendlyError } from '../lib/errors'
 import { supabase, supabaseConfigured } from '../lib/supabase'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -23,7 +24,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       signIn: async (email, password) => {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
-        return error?.message ?? null
+        return error ? friendlyError(error.message) : null
       },
       signUp: async (email, password, displayName) => {
         const { data, error } = await supabase.auth.signUp({
@@ -31,7 +32,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           password,
           options: { data: { full_name: displayName } },
         })
-        if (error) return error.message
+        if (error) return friendlyError(error.message)
         // With email confirmation on, there is no session until the link is clicked.
         if (!data.session) return 'Check your email to confirm your account, then sign in.'
         return null

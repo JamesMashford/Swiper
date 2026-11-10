@@ -1,14 +1,10 @@
 import { useState, type FormEvent } from 'react'
+import { fieldClass as field, labelClass, primaryClass as primary } from '../ui/styles'
 
 type Props = {
   create: (surname: string) => Promise<string | null>
   join: (code: string) => Promise<string | null>
 }
-
-const field =
-  'w-full rounded-lg border border-neutral-300 px-3 py-2 text-base outline-none focus:border-neutral-900'
-const primary =
-  'rounded-lg bg-neutral-900 px-3 py-2 text-base font-medium text-white disabled:opacity-60'
 
 export default function NurserySetup({ create, join }: Props) {
   const [surname, setSurname] = useState('')
@@ -33,7 +29,7 @@ export default function NurserySetup({ create, join }: Props) {
   }
 
   return (
-    <main className="mx-auto flex h-full max-w-sm flex-col justify-center gap-8 p-6">
+    <main className="mx-auto flex min-h-full max-w-sm flex-col justify-center gap-6 p-6">
       <div className="text-center">
         <h1 className="text-2xl font-semibold">Set up your nursery</h1>
         <p className="text-neutral-600">Start one and share the code, or join your partner's.</p>
@@ -41,10 +37,15 @@ export default function NurserySetup({ create, join }: Props) {
 
       <form onSubmit={onCreate} className="flex flex-col gap-3">
         <h2 className="font-medium">Start a nursery</h2>
+        <label htmlFor="setup-surname" className={labelClass}>
+          Surname (for previews)
+        </label>
         <input
+          id="setup-surname"
           className={field}
           placeholder="Surname (for previews)"
           autoComplete="family-name"
+          maxLength={60}
           value={surname}
           onChange={(e) => setSurname(e.target.value)}
         />
@@ -55,9 +56,13 @@ export default function NurserySetup({ create, join }: Props) {
 
       <form onSubmit={onJoin} className="flex flex-col gap-3">
         <h2 className="font-medium">Join with a code</h2>
+        <label htmlFor="setup-code" className={labelClass}>
+          Invite code
+        </label>
         <input
+          id="setup-code"
           className={`${field} uppercase tracking-widest`}
-          placeholder="BABY-7K2Q"
+          placeholder="BABY-7K2Q9XMD"
           autoCapitalize="characters"
           autoComplete="off"
           value={code}
@@ -70,7 +75,7 @@ export default function NurserySetup({ create, join }: Props) {
       </form>
 
       {message && (
-        <p role="alert" className="text-center text-sm text-red-700">
+        <p role="alert" className="text-center text-sm text-red-800">
           {message}
         </p>
       )}

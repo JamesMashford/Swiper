@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { fieldClass, labelClass, primaryClass } from '../ui/styles'
 import { useAuth } from './context'
 
 export default function SignIn() {
@@ -22,11 +23,8 @@ export default function SignIn() {
     setBusy(false)
   }
 
-  const field =
-    'w-full rounded-lg border border-neutral-300 px-3 py-2 text-base outline-none focus:border-neutral-900'
-
   return (
-    <main className="mx-auto flex h-full max-w-sm flex-col justify-center gap-6 p-6">
+    <main className="mx-auto flex min-h-full max-w-sm flex-col justify-center gap-5 p-6">
       <div className="text-center">
         <h1 className="text-3xl font-semibold">Swiper</h1>
         <p className="text-neutral-600">
@@ -36,44 +34,63 @@ export default function SignIn() {
 
       <form onSubmit={onSubmit} className="flex flex-col gap-3">
         {mode === 'signup' && (
+          <div className="flex flex-col gap-1">
+            <label htmlFor="auth-name" className={labelClass}>
+              Your name
+            </label>
+            <input
+              id="auth-name"
+              className={fieldClass}
+              type="text"
+              placeholder="Your name"
+              autoComplete="name"
+              maxLength={60}
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              required
+            />
+          </div>
+        )}
+        <div className="flex flex-col gap-1">
+          <label htmlFor="auth-email" className={labelClass}>
+            Email
+          </label>
           <input
-            className={field}
-            type="text"
-            placeholder="Your name"
-            autoComplete="name"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
+            id="auth-email"
+            className={fieldClass}
+            type="email"
+            placeholder="Email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             required
           />
-        )}
-        <input
-          className={field}
-          type="email"
-          placeholder="Email"
-          autoComplete="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
-        <input
-          className={field}
-          type="password"
-          placeholder="Password"
-          autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-          minLength={8}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label htmlFor="auth-password" className={labelClass}>
+            Password
+          </label>
+          <input
+            id="auth-password"
+            className={fieldClass}
+            type="password"
+            placeholder="Password"
+            autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+            minLength={8}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+        </div>
         {message && (
-          <p role="alert" className="text-sm text-red-700">
+          <p role="alert" className="text-sm text-red-800">
             {message}
           </p>
         )}
         <button
           type="submit"
           disabled={busy}
-          className="rounded-lg bg-neutral-900 px-3 py-2 text-base font-medium text-white disabled:opacity-60"
+          className={primaryClass}
         >
           {busy ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}
         </button>
@@ -81,7 +98,7 @@ export default function SignIn() {
 
       <button
         type="button"
-        className="text-sm text-neutral-600 underline"
+        className="min-h-11 px-3 text-sm text-neutral-700 underline"
         onClick={() => {
           setMode(mode === 'signin' ? 'signup' : 'signin')
           setMessage(null)

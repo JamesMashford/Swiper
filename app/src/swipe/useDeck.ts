@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { friendlyError } from '../lib/errors'
 import type { NameCard } from '../lib/types'
 
 export type DeckStatus = 'loading' | 'ready' | 'empty' | 'error' | 'missing'
@@ -40,7 +41,7 @@ export function useDeck(userId: string) {
         if (error) {
           if (isMissingRpc(error, httpStatus)) setStatus('missing')
           else {
-            setLoadError(error.message)
+            setLoadError(friendlyError(error.message))
             setStatus('error')
           }
           return
@@ -98,7 +99,7 @@ export function useDeck(userId: string) {
     if (error) {
       setQueue((q) => (q.some((c) => c.id === card.id) ? q : [card, ...q]))
       setStatus('ready')
-      setSwipeError(`Could not save that swipe: ${error.message}`)
+      setSwipeError(`Could not save that swipe. ${friendlyError(error.message)}`)
     }
   }, [])
 

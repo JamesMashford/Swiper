@@ -148,7 +148,7 @@ export default function DuelTab({
         </button>
       </div>
       <section aria-label="Your top 3" className="rounded-2xl bg-neutral-50 p-4">
-        <h3 className="mb-2 text-sm font-semibold text-neutral-900">Your top 3 right now</h3>
+        <h2 className="mb-2 text-sm font-semibold text-neutral-900">Your top 3 right now</h2>
         <ol className="flex flex-col gap-1 text-sm text-neutral-800">
           {top3.map((r, i) => (
             <li key={r.name_id}>

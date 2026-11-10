@@ -38,7 +38,6 @@ export type ShortlistRow = {
   meaning: string | null
   my_position: number | null
   my_elo: number
-  combined_score: number
   combined_rank: number
 }
 

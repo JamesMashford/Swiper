@@ -7,6 +7,8 @@
 //   mock.addUser('a@x.test', 'password1', 'Alice')
 //   mock.latency = 300            // ms added to every REST call
 //   mock.fail = (req) => boolean  // return true to answer 500 for that request
+//   mock.rpcDelay.fn = ms         // extra delay for one rpc
+//   mock.tableDelay.profiles = ms // extra delay for GETs on one table
 //   mock.log                      // [{method, path, status}] of every call
 
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url')
@@ -61,13 +63,17 @@ export function createMock({ origin, names = makeNames() }) {
     fail: null,
     log: [],
     rpcDelay: {},
+    tableDelay: {},
+    joinFailures: new Map(), // user id -> failed join attempts (lockout after 10)
+    rotateCalls: 0,
+    leaveCalls: 0,
     addUser(email, password, display = '') {
       const id = `00000000-0000-4000-8000-${String(s.seq++).padStart(12, '0')}`
       const u = { id, email, password, display: display || email.split('@')[0] }
       s.users.set(email, u)
       return u
     },
-    addNursery(ownerId, code = 'BABY-AAAA', surname = '') {
+    addNursery(ownerId, code = 'BABY-AAAAAAAA', surname = '') {
       const id = `11111111-0000-4000-8000-${String(s.seq++).padStart(12, '0')}`
       s.nurseries.push({ id, invite_code: code, surname, genders: ['boy', 'girl', 'neutral'], origins: [], created_by: ownerId })
       s.members.push({ nursery_id: id, user_id: ownerId })
@@ -202,19 +208,42 @@ export function createMock({ origin, names = makeNames() }) {
     if (table.startsWith('rpc/')) {
       const fn = table.slice(4)
       if (mock.rpcDelay[fn]) await new Promise((r) => setTimeout(r, mock.rpcDelay[fn]))
+      const code8 = () => 'BABY-' + Math.random().toString(36).slice(2, 10).toUpperCase().padEnd(8, 'X')
       if (fn === 'create_nursery') {
         if (my) { rec(400); return json(route, 400, { code: 'P0001', message: 'You are already in a nursery' }) }
-        const id = mock.addNursery(me.id, 'BABY-' + Math.random().toString(36).slice(2, 6).toUpperCase(), body.p_surname ?? '')
+        const id = mock.addNursery(me.id, code8(), body.p_surname ?? '')
         rec(200)
         return json(route, 200, s.nurseries.find((n) => n.id === id))
       }
       if (fn === 'join_nursery') {
+        // Like the real function: wrong code, full nursery and lockout all answer 200 {ok:false,message}.
+        const fails = mock.joinFailures.get(me.id) ?? 0
+        const bad = (message) => { mock.joinFailures.set(me.id, fails + 1); rec(200); return json(route, 200, { ok: false, message }) }
+        if (fails >= 10) { rec(200); return json(route, 200, { ok: false, message: 'Too many attempts. Try again in a few minutes.' }) }
         const n = s.nurseries.find((x) => x.invite_code === String(body.p_code).trim().toUpperCase())
-        if (!n) { rec(400); return json(route, 400, { code: 'P0002', message: 'Invite code not found' }) }
-        if (s.members.filter((m) => m.nursery_id === n.id).length >= 2) { rec(400); return json(route, 400, { code: 'P0001', message: 'This nursery already has two members' }) }
+        if (!n || s.members.filter((m) => m.nursery_id === n.id).length >= 2) return bad('That invite code did not work. Check it, or ask your partner for a new one.')
         s.members.push({ nursery_id: n.id, user_id: me.id })
         rec(200)
-        return json(route, 200, n)
+        return json(route, 200, { ok: true, nursery_id: n.id })
+      }
+      if (fn === 'rotate_invite_code') {
+        if (!my) { rec(400); return json(route, 400, { code: 'P0001', message: 'You are not in a nursery' }) }
+        mock.rotateCalls++
+        my.invite_code = code8()
+        rec(200)
+        return json(route, 200, my.invite_code)
+      }
+      if (fn === 'leave_nursery') {
+        mock.leaveCalls++
+        if (my) {
+          s.members = s.members.filter((m) => !(m.nursery_id === my.id && m.user_id === me.id))
+          s.matches = s.matches.filter((m) => m.nursery_id !== my.id)
+          s.rankings = s.rankings.filter((r) => r.nursery_id !== my.id)
+          s.duels = s.duels.filter((d) => d.nursery_id !== my.id)
+          if (!s.members.some((m) => m.nursery_id === my.id)) s.nurseries = s.nurseries.filter((n) => n.id !== my.id)
+        }
+        rec(204)
+        return route.fulfill({ status: 204, headers: CORS })
       }
       if (fn === 'suggest_names') {
         if (mock.missingRpc) { rec(404); return json(route, 404, { code: 'PGRST202', message: 'Could not find the function public.suggest_names(p_n) in the schema cache' }) }
@@ -240,11 +269,11 @@ export function createMock({ origin, names = makeNames() }) {
           const mine = s.rankings.find((r) => r.user_id === me.id && r.name_id === m.name_id)
           const wins = s.duels.filter((d) => d.user_id === me.id && d.winner_name_id === m.name_id).length
           const losses = s.duels.filter((d) => d.user_id === me.id && d.loser_name_id === m.name_id).length
-          const score = 1000 + 16 * (wins - losses) - (mine ? mine.position : 5)
-          return { name_id: nm.id, name: nm.name, gender: nm.gender, meaning: nm.meaning, my_position: mine ? mine.position : null, my_elo: 1000 + 16 * (wins - losses), combined_score: score }
+          const score = 1000 + 16 * (wins - losses) - (mine ? mine.position : 5) // internal only: the real function returns no score
+          return { name_id: nm.id, name: nm.name, gender: nm.gender, meaning: nm.meaning, my_position: mine ? mine.position : null, my_elo: 1000 + 16 * (wins - losses), _score: score }
         })
-        rows.sort((a, b) => b.combined_score - a.combined_score)
-        rows.forEach((r, i) => (r.combined_rank = i + 1))
+        rows.sort((a, b) => b._score - a._score)
+        rows.forEach((r, i) => ((r.combined_rank = i + 1), delete r._score))
         rec(200)
         return json(route, 200, rows)
       }
@@ -267,6 +296,7 @@ export function createMock({ origin, names = makeNames() }) {
       return s[table] || []
     }
     if (method === 'GET') {
+      if (mock.tableDelay[table]) await new Promise((r) => setTimeout(r, mock.tableDelay[table]))
       let rows = rowsOf().filter(own).filter(filt)
       const ord = url.searchParams.get('order')
       if (ord) {

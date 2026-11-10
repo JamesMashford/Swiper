@@ -1,8 +1,9 @@
 import { motion, useReducedMotion } from 'framer-motion'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 
 type Props = {
-  name: string
+  /** Names of every new match; one shows the name, several show a count and a list. */
+  names: string[]
   surname: string
   onSee: () => void
   onKeep: () => void
@@ -23,22 +24,59 @@ const PIECES = Array.from({ length: 22 }, (_, i) => {
   }
 })
 
-export default function MatchOverlay({ name, surname, onSee, onKeep }: Props) {
+const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
+export default function MatchOverlay({ names, surname, onSee, onKeep }: Props) {
   const reduce = useReducedMotion()
+  const dialog = useRef<HTMLDivElement>(null)
   const primary = useRef<HTMLButtonElement>(null)
-  const full = `${name} ${surname.trim()}`.trim()
+  // Read while rendering, before the page behind goes inert and drops focus.
+  const [opener] = useState<Element | null>(() => document.activeElement)
+  const last = surname.trim()
+  const full = (n: string) => `${n} ${last}`.trim()
+  const many = names.length > 1
 
   useEffect(() => {
     primary.current?.focus()
+    return () => {
+      // Give focus back to where it was; if that screen is gone, to the page itself.
+      const back = opener instanceof HTMLElement && opener.isConnected ? opener : null
+      ;(back ?? document.getElementById('main'))?.focus()
+    }
+  }, [opener])
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onKeep()
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onKeep])
 
+  // Keep Tab and Shift+Tab inside the dialog.
+  function trap(e: ReactKeyboardEvent) {
+    if (e.key !== 'Tab') return
+    const items = [...(dialog.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])]
+    if (items.length === 0) return
+    const first = items[0]
+    const end = items[items.length - 1]
+    const active = document.activeElement
+    if (!dialog.current?.contains(active)) {
+      e.preventDefault()
+      first.focus()
+    } else if (e.shiftKey && active === first) {
+      e.preventDefault()
+      end.focus()
+    } else if (!e.shiftKey && active === end) {
+      e.preventDefault()
+      first.focus()
+    }
+  }
+
   return (
     <motion.div
+      ref={dialog}
       role="dialog"
       aria-modal="true"
+      onKeyDown={trap}
       aria-labelledby="match-title"
       className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/70 p-6"
       initial={{ opacity: 0 }}
@@ -65,13 +103,24 @@ export default function MatchOverlay({ name, surname, onSee, onKeep }: Props) {
             ))}
           </div>
         )}
-        <p className="text-sm font-semibold uppercase tracking-widest text-indigo-600">
-          It's a match
+        <p className="text-sm font-semibold uppercase tracking-widest text-indigo-700">
+          {many ? 'New matches' : "It's a match"}
         </p>
         <h2 id="match-title" className="mt-3 break-words text-4xl font-bold leading-tight text-neutral-900">
-          {full}
+          {many ? `${names.length} new matches` : full(names[0])}
         </h2>
-        <p className="mt-3 text-neutral-600">You both liked this name.</p>
+        {many && (
+          <ul className="mt-3 max-h-40 overflow-y-auto text-lg font-medium text-neutral-800">
+            {names.map((n, i) => (
+              <li key={i} className="break-words">
+                {full(n)}
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="mt-3 text-neutral-700">
+          {many ? 'You both liked these names.' : 'You both liked this name.'}
+        </p>
         <div className="mt-8 flex flex-col gap-3">
           <button
             ref={primary}
@@ -84,7 +133,7 @@ export default function MatchOverlay({ name, surname, onSee, onKeep }: Props) {
           <button
             type="button"
             onClick={onKeep}
-            className="min-h-12 rounded-full px-6 font-semibold text-neutral-700 ring-1 ring-neutral-300 hover:bg-neutral-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+            className="min-h-12 rounded-full px-6 font-semibold text-neutral-800 ring-1 ring-neutral-400 hover:bg-neutral-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
           >
             Keep swiping
           </button>

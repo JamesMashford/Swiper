@@ -1,14 +1,18 @@
 import { useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { friendlyError } from '../lib/errors'
 import { supabase } from '../lib/supabase'
 import { GENDERS, ORIGINS, type ScreenProps } from '../lib/types'
 
 const card = 'rounded-xl border border-neutral-200 bg-white p-4'
 const field =
-  'min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-base outline-none focus:border-neutral-900 focus-visible:outline-2 focus-visible:outline-rose-600'
+  'min-h-11 w-full min-w-0 rounded-lg border border-neutral-400 px-3 py-2 text-base focus-visible:border-neutral-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-600'
 const primary =
   'min-h-11 rounded-lg bg-rose-600 px-4 py-2 text-base font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-600 disabled:opacity-60'
 const secondary =
-  'min-h-11 rounded-lg border border-neutral-300 px-4 py-2 text-base font-medium text-neutral-900 focus-visible:outline-2 focus-visible:outline-rose-600 disabled:opacity-60'
+  'min-h-11 rounded-lg border border-neutral-300 px-4 py-2 text-base font-medium text-neutral-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-600 disabled:opacity-60'
+
+const danger =
+  'min-h-11 rounded-lg border border-red-700 bg-white px-4 py-2 text-base font-medium text-red-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700 disabled:opacity-60'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -33,7 +37,7 @@ function Chip({
       type="button"
       aria-pressed={selected}
       onClick={onClick}
-      className={`min-h-11 rounded-full border px-4 text-base capitalize focus-visible:outline-2 focus-visible:outline-rose-600 ${
+      className={`min-h-11 rounded-full border px-4 text-base capitalize focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-600 ${
         selected
           ? 'border-rose-600 bg-rose-600 text-white'
           : 'border-neutral-300 bg-white text-neutral-900'
@@ -60,13 +64,18 @@ export default function SettingsScreen({
   const partner = members.find((m) => m.user_id !== userId)
 
   const [surname, setSurname] = useState(nursery.surname)
-  const [displayName, setDisplayName] = useState(me?.display_name ?? '')
+  // null = not edited yet, so the field follows the saved name as soon as it arrives.
+  const [nameDraft, setNameDraft] = useState<string | null>(null)
+  const displayName = nameDraft ?? me?.display_name ?? ''
+  const setDisplayName = setNameDraft
   const [genders, setGenders] = useState<string[]>(nursery.genders)
   const [origins, setOrigins] = useState<string[]>(nursery.origins)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<Record<string, string>>({})
   const [copied, setCopied] = useState(false)
+  const [confirmLeave, setConfirmLeave] = useState(false)
+  const [rotated, setRotated] = useState<string | null>(null)
   const codeRef = useRef<HTMLParagraphElement>(null)
 
   function flash(key: string, text: string) {
@@ -101,6 +110,24 @@ export default function SettingsScreen({
     }
   }
 
+  const rotateCode = () =>
+    run('rotate', async () => {
+      const { data, error: err } = await supabase.rpc('rotate_invite_code')
+      if (err) return friendlyError(err.message)
+      setRotated(typeof data === 'string' ? data : null)
+      await refreshNursery()
+      return null
+    })
+
+  const leaveNursery = () =>
+    run('leave', async () => {
+      const { error: err } = await supabase.rpc('leave_nursery')
+      if (err) return friendlyError(err.message)
+      // The nursery is gone, so reloading sends the app back to the nursery setup screen.
+      await refreshNursery()
+      return null
+    })
+
   const saveSurname = (e: FormEvent) => {
     e.preventDefault()
     run(
@@ -110,7 +137,7 @@ export default function SettingsScreen({
           .from('nurseries')
           .update({ surname: surname.trim() })
           .eq('id', nursery.id)
-        if (err) return err.message
+        if (err) return friendlyError(err.message)
         await refreshNursery()
         return null
       },
@@ -129,8 +156,9 @@ export default function SettingsScreen({
           .from('profiles')
           .update({ display_name: name })
           .eq('id', userId)
-        if (err) return err.message
+        if (err) return friendlyError(err.message)
         await refreshNursery()
+        setNameDraft(null)
         return null
       },
       'Saved',
@@ -155,7 +183,7 @@ export default function SettingsScreen({
           .from('nurseries')
           .update({ genders, origins })
           .eq('id', nursery.id)
-        if (err) return err.message
+        if (err) return friendlyError(err.message)
         await refreshNursery()
         return null
       },
@@ -196,6 +224,19 @@ export default function SettingsScreen({
           <button type="button" className={secondary} onClick={copyCode}>
             {copied ? 'Copied' : 'Copy code'}
           </button>
+          <div className="mt-3 flex flex-col items-center gap-2">
+            <button type="button" className={secondary} disabled={busy === 'rotate'} onClick={rotateCode}>
+              {busy === 'rotate' ? 'Making a new code…' : 'New invite code'}
+            </button>
+            <p className="text-sm text-neutral-600">
+              Use this if the code was shared by mistake. The old code stops working straight away.
+            </p>
+            {rotated && (
+              <p role="status" className="text-sm font-medium text-green-800">
+                New code: <span data-testid="rotated-code">{rotated}</span>. The old code no longer works.
+              </p>
+            )}
+          </div>
         </div>
 
         {partner ? (
@@ -224,7 +265,7 @@ export default function SettingsScreen({
         )}
 
         <form onSubmit={saveSurname} className="flex flex-col gap-2">
-          <label htmlFor="surname" className="text-sm text-neutral-600">
+          <label htmlFor="surname" className="text-sm text-neutral-700">
             Surname
           </label>
           <div className="flex gap-2">
@@ -232,6 +273,7 @@ export default function SettingsScreen({
               id="surname"
               className={field}
               autoComplete="family-name"
+              maxLength={60}
               value={surname}
               onChange={(e) => setSurname(e.target.value)}
             />
@@ -257,6 +299,7 @@ export default function SettingsScreen({
               id="display-name"
               className={field}
               autoComplete="name"
+              maxLength={60}
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
             />
@@ -333,7 +376,34 @@ export default function SettingsScreen({
         </button>
       </Section>
 
-      <footer className="pb-4 text-center text-sm text-neutral-500">Swiper</footer>
+      <Section title="Leave nursery">
+        <p className="text-neutral-800">
+          Leaving removes you from this nursery and clears the matches you shared, along with the
+          rankings and head-to-head choices built on them. Your own swipes are kept. You can start a
+          new nursery or join another one afterwards.
+        </p>
+        {!confirmLeave ? (
+          <button type="button" className={danger} onClick={() => setConfirmLeave(true)}>
+            Leave nursery
+          </button>
+        ) : (
+          <div role="group" aria-label="Confirm leaving" className="flex flex-col gap-3 rounded-lg border border-red-300 bg-red-50 p-3">
+            <p className="font-medium text-red-900">
+              Leave this nursery for good? This cannot be undone.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className={danger} disabled={busy === 'leave'} onClick={leaveNursery}>
+                {busy === 'leave' ? 'Leaving…' : 'Yes, leave nursery'}
+              </button>
+              <button type="button" className={secondary} disabled={busy === 'leave'} onClick={() => setConfirmLeave(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </Section>
+
+      <footer className="pb-4 text-center text-sm text-neutral-600">Swiper</footer>
     </div>
   )
 }

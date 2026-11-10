@@ -89,7 +89,7 @@ export default function SwipeCard({ card, surname, isTop, onCommit, ref }: Props
         </span>
         <h2 className="break-words text-5xl font-bold leading-[1.05] tracking-tight text-neutral-900">
           {card.name}
-          {last && <span className="block text-3xl font-medium text-neutral-400">{last}</span>}
+          {last && <span className="block text-3xl font-medium text-neutral-600">{last}</span>}
         </h2>
         {card.origins.length > 0 && (
           <p className="text-sm font-medium text-indigo-700">{card.origins.join(' · ')}</p>
@@ -99,7 +99,7 @@ export default function SwipeCard({ card, surname, isTop, onCommit, ref }: Props
       <div className="mt-6 flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
         {knownMeaning(card.meaning) && (
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Meaning</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-600">Meaning</p>
             <p className="text-lg leading-snug text-neutral-800">{knownMeaning(card.meaning)}</p>
           </div>
         )}

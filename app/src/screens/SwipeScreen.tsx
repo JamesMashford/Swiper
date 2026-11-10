@@ -57,7 +57,7 @@ function Skeleton() {
   )
 }
 
-export default function SwipeScreen({ nursery, userId, onNavigate }: Props) {
+function SwipeBody({ nursery, userId, onNavigate }: Props) {
   const { queue, status, loadError, swipeError, dismissSwipeError, swipe, reload } = useDeck(userId)
   const topRef = useRef<CardHandle>(null)
   const flying = useRef(false)
@@ -115,6 +115,8 @@ export default function SwipeScreen({ nursery, userId, onNavigate }: Props) {
         action={{ label: 'Retry', onClick: reload }}
       />
     )
+  // Nothing to show yet but more is on its way (slow connection): keep the skeleton.
+  if (!top && status !== 'empty') return <Skeleton />
   if (status === 'empty' || !top)
     return (
       <CenterMessage
@@ -186,5 +188,14 @@ export default function SwipeScreen({ nursery, userId, onNavigate }: Props) {
         </button>
       </div>
     </section>
+  )
+}
+
+export default function SwipeScreen(props: Props) {
+  return (
+    <>
+      <h1 className="sr-only">Swipe</h1>
+      <SwipeBody {...props} />
+    </>
   )
 }
