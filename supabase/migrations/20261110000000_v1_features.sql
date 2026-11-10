@@ -271,16 +271,20 @@ $$;
 -- shortlist_scores: the caller's nursery matches with the couple's combined ranking
 --
 -- Combined ranking, per match name and per member of the nursery:
---   rank_points = (n_ranked - 1 - position) / (n_ranked - 1)   in 0..1 (1 if only one
---                 name is ranked), or 0.5 (neutral) if that member did not rank the name
+--   rank_points = (n_ranked - 1 - idx) / (n_ranked - 1)   in 0..1, where idx is the
+--                 gap-free 0-based index of the name among that member's ranked matches
+--                 (row_number over position, so deleted matches leave no holes); 1 if only
+--                 one name is ranked; 0.5 (neutral) if that member did not rank the name
 --   elo_points  = (elo - min elo) / (max elo - min elo) across the nursery's matches,
 --                 0.5 for everyone when all Elo ratings are equal
 --   member_score = 0.7 * rank_points + 0.3 * elo_points
--- combined_score = average of member_score over the nursery's members (rounded to 4 dp);
--- combined_rank = row number ordered by combined_score desc, then name (1 = best).
--- Only the caller's own position and Elo are returned, never the partner's.
+-- combined score = average of member_score over the nursery's members; combined_rank =
+-- row number ordered by that score desc, then name (1 = best). The score itself is NOT
+-- returned: with the caller's own numbers it would reveal the partner's. Only the
+-- caller's own position (gap-free) and Elo are returned.
 -- ---------------------------------------------------------------------------
-create or replace function public.shortlist_scores()
+drop function if exists public.shortlist_scores();
+create function public.shortlist_scores()
 returns table (
   name_id bigint,
   name text,
@@ -288,7 +292,6 @@ returns table (
   meaning text,
   my_position integer,
   my_elo integer,
-  combined_score numeric,
   combined_rank integer
 )
 language plpgsql
@@ -318,7 +321,8 @@ begin
     select x.name_id from public.matches x where x.nursery_id = v_nursery
   ),
   rk as (
-    select r.user_id, r.name_id, r.position,
+    select r.user_id, r.name_id,
+           (row_number() over (partition by r.user_id order by r.position, r.name_id) - 1) as idx,
            count(*) over (partition by r.user_id) as n_ranked
     from public.rankings r
     where r.nursery_id = v_nursery
@@ -336,7 +340,7 @@ begin
     select mb.user_id, mt.name_id,
            0.7 * coalesce(
              case when rk.n_ranked = 1 then 1.0
-                  else (rk.n_ranked - 1 - rk.position)::numeric / (rk.n_ranked - 1) end,
+                  else (rk.n_ranked - 1 - rk.idx)::numeric / (rk.n_ranked - 1) end,
              0.5)
            + 0.3 * case when er.hi = er.lo then 0.5
                         else ((el.elo - er.lo) / (er.hi - er.lo))::numeric end as score
@@ -347,11 +351,11 @@ begin
     left join elo_range er on er.user_id = mb.user_id
   ),
   combined as (
-    select pm.name_id, round(avg(pm.score), 4) as score
+    select pm.name_id, round(avg(pm.score), 6) as score
     from per_member pm group by pm.name_id
   ),
   mine as (
-    select r.name_id, r.position from rk r where r.user_id = v_user
+    select r.name_id, r.idx from rk r where r.user_id = v_user
   ),
   my_e as (
     select e.name_id, round(e.elo)::int as elo from elo e where e.user_id = v_user
@@ -360,15 +364,275 @@ begin
          nm.name,
          nm.gender,
          nm.meaning,
-         mi.position::integer,
+         mi.idx::integer,
          me.elo,
-         c.score,
          (row_number() over (order by c.score desc, nm.name, nm.id))::integer
   from combined c
   join public.names nm on nm.id = c.name_id
   left join mine mi on mi.name_id = c.name_id
   left join my_e me on me.name_id = c.name_id
-  order by 8;
+  order by 7;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- F2: serialise match creation per nursery. Without the lock, two simultaneous likes
+-- of the same name each miss the other's uncommitted row and no match is created.
+-- ---------------------------------------------------------------------------
+create or replace function public.sync_matches_on_swipe()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_nursery uuid;
+begin
+  select nursery_id into v_nursery
+  from public.nursery_members
+  where user_id = new.user_id;
+
+  if v_nursery is null then
+    return new;
+  end if;
+
+  perform pg_advisory_xact_lock(hashtextextended(v_nursery::text, 0));
+
+  if new.liked then
+    insert into public.matches (nursery_id, name_id)
+    select v_nursery, new.name_id
+    where exists (
+      select 1
+      from public.nursery_members m
+      join public.swipes s on s.user_id = m.user_id
+      where m.nursery_id = v_nursery
+        and m.user_id <> new.user_id
+        and s.name_id = new.name_id
+        and s.liked
+    )
+    on conflict do nothing;
+  else
+    delete from public.matches where nursery_id = v_nursery and name_id = new.name_id;
+  end if;
+
+  return new;
+end;
+$$;
+
+create or replace function public.backfill_matches_on_join()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform pg_advisory_xact_lock(hashtextextended(new.nursery_id::text, 0));
+
+  insert into public.matches (nursery_id, name_id)
+  select new.nursery_id, s.name_id
+  from public.swipes s
+  join public.nursery_members m on m.user_id = s.user_id and m.nursery_id = new.nursery_id
+  group by s.name_id
+  having count(*) = 2 and bool_and(s.liked)
+  on conflict do nothing;
+
+  return new;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- F5: input limits. NOT VALID: rows that already exist (test data on the live project)
+-- are not re-checked, but every new write and update is.
+-- ---------------------------------------------------------------------------
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'nurseries_genders_size'
+                 and conrelid = 'public.nurseries'::regclass) then
+    alter table public.nurseries add constraint nurseries_genders_size
+      check (cardinality(genders) between 1 and 3) not valid;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'nurseries_surname_len'
+                 and conrelid = 'public.nurseries'::regclass) then
+    alter table public.nurseries add constraint nurseries_surname_len
+      check (char_length(surname) <= 60) not valid;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'nurseries_origins_count'
+                 and conrelid = 'public.nurseries'::regclass) then
+    alter table public.nurseries add constraint nurseries_origins_count
+      check (cardinality(origins) <= 19) not valid;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'profiles_display_name_len'
+                 and conrelid = 'public.profiles'::regclass) then
+    alter table public.profiles add constraint profiles_display_name_len
+      check (char_length(display_name) <= 60) not valid;
+  end if;
+end $$;
+
+-- Sign-up must not fail because of a very long name in the metadata.
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  insert into public.profiles (id, display_name)
+  values (
+    new.id,
+    left(coalesce(new.raw_user_meta_data ->> 'full_name', split_part(new.email, '@', 1), ''), 60)
+  );
+  return new;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- F1: invite codes. 8 random characters (32 symbols), and join attempts are throttled.
+-- ---------------------------------------------------------------------------
+create or replace function public.generate_invite_code()
+returns text
+language plpgsql
+volatile
+set search_path = ''
+as $$
+declare
+  -- No 0/O/1/I to keep codes easy to read out loud.
+  alphabet constant text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  code text;
+begin
+  loop
+    code := 'BABY-' || (
+      select string_agg(substr(alphabet, 1 + floor(random() * length(alphabet))::int, 1), '')
+      from generate_series(1, 8)
+    );
+    exit when not exists (select 1 from public.nurseries where invite_code = code);
+  end loop;
+  return code;
+end;
+$$;
+
+create table if not exists public.join_failures (
+  user_id uuid not null,
+  failed_at timestamptz not null default now()
+);
+create index if not exists join_failures_user_idx on public.join_failures (user_id, failed_at);
+alter table public.join_failures enable row level security;
+revoke all on public.join_failures from public, anon, authenticated;
+
+-- join_nursery now RETURNS JSONB and does not raise for wrong/full/locked-out cases (a
+-- raised exception would roll back the failure record):
+--   success:  {"ok": true,  "nursery_id": "<uuid>"}
+--   failure:  {"ok": false, "message": "<text>"}
+-- It still raises for "not signed in" and "already in a nursery".
+drop function if exists public.join_nursery(text);
+create function public.join_nursery(p_code text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user uuid := auth.uid();
+  v_nursery uuid;
+  v_generic constant text :=
+    'That invite code did not work. Check it, or ask your partner for a new one.';
+begin
+  if v_user is null then
+    raise exception 'Not signed in' using errcode = '28000';
+  end if;
+  if exists (select 1 from public.nursery_members where user_id = v_user) then
+    raise exception 'You are already in a nursery' using errcode = 'P0001';
+  end if;
+
+  delete from public.join_failures where failed_at < now() - interval '1 day';
+
+  if (select count(*) from public.join_failures
+      where user_id = v_user and failed_at > now() - interval '15 minutes') >= 10 then
+    return jsonb_build_object('ok', false,
+                              'message', 'Too many attempts. Try again in a few minutes.');
+  end if;
+
+  select n.id into v_nursery from public.nurseries n
+  where n.invite_code = upper(trim(coalesce(p_code, '')));
+
+  if v_nursery is not null then
+    begin
+      insert into public.nursery_members (nursery_id, user_id) values (v_nursery, v_user);
+      return jsonb_build_object('ok', true, 'nursery_id', v_nursery);
+    exception when raise_exception then
+      -- nursery already has two members (size trigger): fall through as a failure
+      null;
+    end;
+  end if;
+
+  insert into public.join_failures (user_id) values (v_user);
+  return jsonb_build_object('ok', false, 'message', v_generic);
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- F9: leaving, rotating the code, and cleaning up when a member goes away
+-- ---------------------------------------------------------------------------
+create or replace function public.on_nursery_member_removed()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  -- Matches need both partners; with one gone they are stale (cascades to rankings, duels).
+  delete from public.matches where nursery_id = old.nursery_id;
+  delete from public.nurseries n
+  where n.id = old.nursery_id
+    and not exists (select 1 from public.nursery_members m where m.nursery_id = n.id);
+  return old;
+end;
+$$;
+
+drop trigger if exists nursery_members_removed on public.nursery_members;
+create trigger nursery_members_removed
+  after delete on public.nursery_members
+  for each row execute function public.on_nursery_member_removed();
+
+create or replace function public.leave_nursery()
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user uuid := auth.uid();
+begin
+  if v_user is null then
+    raise exception 'Not signed in' using errcode = '28000';
+  end if;
+  delete from public.nursery_members where user_id = v_user;
+  if not found then
+    raise exception 'You are not in a nursery' using errcode = 'P0001';
+  end if;
+end;
+$$;
+
+create or replace function public.rotate_invite_code()
+returns text
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user uuid := auth.uid();
+  v_nursery uuid;
+  v_code text;
+begin
+  if v_user is null then
+    raise exception 'Not signed in' using errcode = '28000';
+  end if;
+  select m.nursery_id into v_nursery from public.nursery_members m where m.user_id = v_user;
+  if v_nursery is null then
+    raise exception 'You are not in a nursery' using errcode = 'P0001';
+  end if;
+  update public.nurseries set invite_code = public.generate_invite_code()
+  where id = v_nursery returning invite_code into v_code;
+  return v_code;
 end;
 $$;
 
@@ -379,7 +643,21 @@ revoke execute on function public.suggest_names(int) from public, anon;
 revoke execute on function public.save_ranking(bigint[]) from public, anon;
 revoke execute on function public.shortlist_scores() from public, anon;
 revoke execute on function public.member_elo(uuid, uuid) from public, anon, authenticated;
+revoke execute on function public.join_nursery(text) from public, anon;
+revoke execute on function public.leave_nursery() from public, anon;
+revoke execute on function public.rotate_invite_code() from public, anon;
+revoke execute on function public.generate_invite_code() from public, anon, authenticated;
+revoke execute on function public.handle_new_user() from public, anon, authenticated;
+revoke execute on function public.sync_matches_on_swipe() from public, anon, authenticated;
+revoke execute on function public.backfill_matches_on_join() from public, anon, authenticated;
+revoke execute on function public.on_nursery_member_removed() from public, anon, authenticated;
+-- I8: the membership helper is only for signed-in users (RLS evaluates it as authenticated).
+revoke execute on function public.is_nursery_member(uuid) from public, anon;
+grant execute on function public.is_nursery_member(uuid) to authenticated;
 
 grant execute on function public.suggest_names(int) to authenticated;
 grant execute on function public.save_ranking(bigint[]) to authenticated;
 grant execute on function public.shortlist_scores() to authenticated;
+grant execute on function public.join_nursery(text) to authenticated;
+grant execute on function public.leave_nursery() to authenticated;
+grant execute on function public.rotate_invite_code() to authenticated;

@@ -289,6 +289,251 @@ do $$ begin
   reset role;
 end $$;
 
+-- ---------------------------------------------------------------------------
+-- Review fixes (F1, F2/F3, F5, F8, F9, I8)
+-- ---------------------------------------------------------------------------
+-- F3: exact column list, nothing that reveals the partner's numbers.
+do $$ begin
+  perform pg_temp.chk(pg_get_function_result('public.shortlist_scores()'::regprocedure) =
+    'TABLE(name_id bigint, name text, gender text, meaning text, my_position integer, my_elo integer, combined_rank integer)',
+    'shortlist_scores returns exactly the contract columns (no combined_score)');
+end $$;
+
+-- F8: deleting a match leaves gap-free positions and sane combined ranks.
+do $$ declare v_a uuid := '00000000-0000-0000-0000-0000000000a1'; v_b uuid := '00000000-0000-0000-0000-0000000000b1'; begin
+  -- A ranks m3,m1,m2 ; B ranks m3,m2,m1,m4,m5 (from earlier). Remove m2's match.
+  delete from public.matches where nursery_id = '00000000-0000-0000-0000-00000000aaa1' and name_id = (select id from t_m where k = 2);
+  perform pg_temp.chk((select count(*) = 2 from public.rankings where user_id = v_a), 'match deletion cascades to A''s ranking rows');
+  perform set_config('request.uid', v_a::text, true); set local role authenticated;
+  perform pg_temp.chk((select count(*) = 4 from public.shortlist_scores()), '4 matches remain');
+  perform pg_temp.chk((select my_position = 1 from public.shortlist_scores() where name_id = (select id from t_m where k = 1)), 'A positions are gap-free after deletion (m1 -> 1)');
+  perform pg_temp.chk((select array_agg(my_position order by my_position) = array[0,1] from public.shortlist_scores() where my_position is not null), 'A ranked positions are 0,1');
+  perform pg_temp.chk((select array_agg(combined_rank order by combined_rank) = array[1,2,3,4] from public.shortlist_scores()), 'combined ranks still 1..4');
+  perform pg_temp.chk((select combined_rank = 1 from public.shortlist_scores() where name_id = (select id from t_m where k = 3)), 'm3 still best after deletion');
+  perform pg_temp.chk((select combined_rank = 4 from public.shortlist_scores() where name_id = (select id from t_m where k = 5)), 'm5 (B last, A unranked) still last');
+  reset role;
+  perform set_config('request.uid', v_b::text, true); set local role authenticated;
+  perform pg_temp.chk((select my_position = 3 from public.shortlist_scores() where name_id = (select id from t_m where k = 5)), 'B positions gap-free (m5 -> 3)');
+  reset role;
+end $$;
+
+-- F5: limits.
+do $$ declare ok boolean; v_n1 uuid := '00000000-0000-0000-0000-00000000aaa1'; begin
+  ok := false; begin update public.nurseries set genders = '{}' where id = v_n1; exception when check_violation then ok := true; end;
+  perform pg_temp.chk(ok, 'empty genders rejected');
+  ok := false; begin update public.nurseries set genders = array['boy','boy','girl','neutral'] where id = v_n1; exception when check_violation then ok := true; end;
+  perform pg_temp.chk(ok, 'four genders rejected');
+  ok := false; begin update public.nurseries set surname = repeat('x', 61) where id = v_n1; exception when check_violation then ok := true; end;
+  perform pg_temp.chk(ok, '61-char surname rejected');
+  update public.nurseries set surname = repeat('x', 60) where id = v_n1;
+  perform pg_temp.chk(true, '60-char surname accepted');
+  ok := false; begin update public.nurseries set origins = array_fill('English'::text, array[20]) where id = v_n1; exception when check_violation then ok := true; end;
+  perform pg_temp.chk(ok, '20 origins rejected');
+  ok := false; begin update public.profiles set display_name = repeat('y', 61) where id = '00000000-0000-0000-0000-0000000000a1'; exception when check_violation then ok := true; end;
+  perform pg_temp.chk(ok, '61-char display name rejected');
+  update public.nurseries set surname = '' where id = v_n1;
+  -- sign-up trigger truncates
+  insert into auth.users (id, email, raw_user_meta_data) values
+    ('00000000-0000-0000-0000-0000000000f1', 'long@t', jsonb_build_object('full_name', repeat('z', 20000)));
+  perform pg_temp.chk((select char_length(display_name) = 60 from public.profiles where id = '00000000-0000-0000-0000-0000000000f1'), 'sign-up truncates a 20000-char name to 60');
+  insert into auth.users (id, email) values ('00000000-0000-0000-0000-0000000000f2', 'short@t');
+  perform pg_temp.chk((select display_name = 'short' from public.profiles where id = '00000000-0000-0000-0000-0000000000f2'), 'sign-up falls back to email prefix');
+  -- as a member via the RPC
+  perform set_config('request.uid', '00000000-0000-0000-0000-0000000000f1', true); set local role authenticated;
+  ok := false; begin perform public.create_nursery(repeat('s', 100)); exception when check_violation then ok := true; end;
+  reset role;
+  perform pg_temp.chk(ok, 'create_nursery with 100-char surname rejected');
+end $$;
+
+-- I8 + RLS still working for authenticated.
+do $$ begin
+  perform pg_temp.chk(not has_function_privilege('anon', 'public.is_nursery_member(uuid)', 'execute'), 'anon cannot call is_nursery_member');
+  perform pg_temp.chk(has_function_privilege('authenticated', 'public.is_nursery_member(uuid)', 'execute'), 'authenticated can call is_nursery_member');
+  perform set_config('request.uid', '00000000-0000-0000-0000-0000000000a1', true); set local role authenticated;
+  perform pg_temp.chk((select count(*) = 1 from public.nurseries), 'RLS policy using is_nursery_member still works');
+  perform pg_temp.chk((select count(*) = 2 from public.nursery_members), 'members readable via RLS');
+  reset role;
+  perform pg_temp.chk(not has_function_privilege('anon', 'public.join_nursery(text)', 'execute')
+    and not has_function_privilege('anon', 'public.leave_nursery()', 'execute')
+    and not has_function_privilege('anon', 'public.rotate_invite_code()', 'execute')
+    and has_function_privilege('authenticated', 'public.join_nursery(text)', 'execute')
+    and has_function_privilege('authenticated', 'public.leave_nursery()', 'execute')
+    and has_function_privilege('authenticated', 'public.rotate_invite_code()', 'execute')
+    and not has_function_privilege('authenticated', 'public.generate_invite_code()', 'execute'), 'new RPC grants correct');
+end $$;
+
+-- F1: invite codes and throttling.
+insert into auth.users (id, email) select ('00000000-0000-0000-0000-00000000' || lpad(i::text, 4, '0'))::uuid, 'u' || i || '@t' from generate_series(2001, 2012) i;
+
+do $$
+declare
+  u_own uuid := '00000000-0000-0000-0000-000000002001'; u_j uuid := '00000000-0000-0000-0000-000000002002';
+  u_k uuid := '00000000-0000-0000-0000-000000002003'; u_l uuid := '00000000-0000-0000-0000-000000002004';
+  u_m uuid := '00000000-0000-0000-0000-000000002005'; u_n uuid := '00000000-0000-0000-0000-000000002006';
+  v_code text; v_nid uuid; v_miss jsonb; v_full jsonb; v_r jsonb; ok boolean;
+  v_generic constant text := 'That invite code did not work. Check it, or ask your partner for a new one.';
+begin
+  perform set_config('request.uid', u_own::text, true); set local role authenticated;
+  v_nid := (public.create_nursery('Smith')).id;
+  reset role;
+  select invite_code into v_code from public.nurseries where id = v_nid;
+  perform pg_temp.chk(v_code ~ '^BABY-[A-HJ-NP-Z2-9]{8}$', 'new codes are BABY- plus 8 symbols: ' || v_code);
+
+  -- Success with lowercase + whitespace, via a single select statement.
+  perform set_config('request.uid', u_j::text, true); set local role authenticated;
+  v_r := public.join_nursery('  ' || lower(v_code) || ' ');
+  reset role;
+  perform pg_temp.chk(v_r = jsonb_build_object('ok', true, 'nursery_id', v_nid), 'join success shape and lowercase/whitespace accepted');
+  perform pg_temp.chk((select count(*) = 0 from public.join_failures where user_id = u_j), 'success records no failure');
+
+  -- Full nursery vs wrong code: identical message.
+  perform set_config('request.uid', u_k::text, true); set local role authenticated;
+  v_full := public.join_nursery(v_code);
+  v_miss := public.join_nursery('BABY-NOPE2345');
+  reset role;
+  perform pg_temp.chk(v_full = v_miss and v_full = jsonb_build_object('ok', false, 'message', v_generic), 'full and wrong codes return the identical generic failure');
+  perform pg_temp.chk((select count(*) = 2 from public.join_failures where user_id = u_k), 'both failures were recorded (survive the call)');
+  perform pg_temp.chk((select count(*) = 0 from public.nursery_members where user_id = u_k), 'K was not added');
+
+  -- Lockout after 10 failures; even the right code is refused. Use a half-empty nursery.
+  perform set_config('request.uid', u_m::text, true); set local role authenticated;
+  v_nid := (public.create_nursery('Open')).id;
+  reset role;
+  select invite_code into v_code from public.nurseries where id = v_nid;
+  perform set_config('request.uid', u_l::text, true); set local role authenticated;
+  for i in 1..10 loop
+    v_r := public.join_nursery('BABY-WRONG' || i);
+    perform pg_temp.chk(v_r ->> 'message' = v_generic, 'attempt ' || i || ' gets the generic message');
+  end loop;
+  v_r := public.join_nursery(v_code);
+  reset role;
+  perform pg_temp.chk(v_r = jsonb_build_object('ok', false, 'message', 'Too many attempts. Try again in a few minutes.'), 'locked out after 10 failures, even with the right code');
+  perform pg_temp.chk((select count(*) = 0 from public.nursery_members where user_id = u_l), 'locked-out user not added');
+  -- After 16 minutes it works again.
+  update public.join_failures set failed_at = now() - interval '16 minutes' where user_id = u_l;
+  perform set_config('request.uid', u_l::text, true); set local role authenticated;
+  v_r := public.join_nursery(v_code);
+  reset role;
+  perform pg_temp.chk((v_r ->> 'ok')::boolean, 'join works again once failures are older than 15 minutes');
+  -- Old failures are cleaned up opportunistically.
+  update public.join_failures set failed_at = now() - interval '2 days' where user_id = u_k;
+  perform set_config('request.uid', u_n::text, true); set local role authenticated;
+  v_r := public.join_nursery('BABY-ZZZZ');
+  reset role;
+  perform pg_temp.chk((select count(*) = 0 from public.join_failures where user_id = u_k), 'failures older than a day are deleted');
+
+  -- Old 4-char codes still join.
+  update public.nurseries set invite_code = 'BABY-AB23' where id = (select nursery_id from public.nursery_members where user_id = u_own);
+  perform set_config('request.uid', u_n::text, true); set local role authenticated;
+  -- u_own's nursery is full (own + J); use a fresh half-empty one
+  reset role;
+  delete from public.nursery_members where user_id = u_j;
+  perform set_config('request.uid', u_n::text, true); set local role authenticated;
+  v_r := public.join_nursery('baby-ab23');
+  reset role;
+  perform pg_temp.chk((v_r ->> 'ok')::boolean, 'old 4-character codes still join');
+  -- Already in a nursery raises.
+  ok := false; perform set_config('request.uid', u_n::text, true); set local role authenticated;
+  begin perform public.join_nursery('BABY-AB23'); exception when sqlstate 'P0001' then ok := true; end;
+  reset role;
+  perform pg_temp.chk(ok, 'joining while already a member raises');
+  -- join_failures is private.
+  ok := false; set local role authenticated;
+  begin perform count(*) from public.join_failures; exception when insufficient_privilege then ok := true; end;
+  reset role;
+  perform pg_temp.chk(ok, 'authenticated cannot read join_failures');
+end $$;
+
+-- F9: partner removal, leave, rotate, cascades.
+do $$
+declare
+  p uuid := '00000000-0000-0000-0000-000000003001'; q uuid := '00000000-0000-0000-0000-000000003002';
+  r uuid := '00000000-0000-0000-0000-000000003003'; t uuid := '00000000-0000-0000-0000-000000003004';
+  v_nid uuid; v_code text; v_code2 text; v_x1 bigint; v_x2 bigint; v_x3 bigint; v_r jsonb; ok boolean;
+begin
+  insert into auth.users (id, email) values (p, 'p@t'), (q, 'q@t'), (r, 'r@t'), (t, 't@t');
+  select id into v_x1 from public.names where name = 'ZT_11';
+  select id into v_x2 from public.names where name = 'ZT_12';
+  select id into v_x3 from public.names where name = 'ZT_13';
+  perform set_config('request.uid', p::text, true); set local role authenticated;
+  v_nid := (public.create_nursery('Stale')).id;
+  reset role;
+  select invite_code into v_code from public.nurseries where id = v_nid;
+  perform set_config('request.uid', q::text, true); set local role authenticated;
+  perform public.join_nursery(v_code);
+  reset role;
+  insert into public.swipes (user_id, name_id, liked) select u, n, true from unnest(array[p, q]) u, unnest(array[v_x1, v_x2]) n;
+  perform pg_temp.chk((select count(*) = 2 from public.matches where nursery_id = v_nid), 'two matches before partner removal');
+  perform set_config('request.uid', p::text, true); set local role authenticated;
+  perform public.save_ranking(array[v_x2, v_x1]);
+  reset role;
+  perform pg_temp.chk((select count(*) = 2 from public.rankings where nursery_id = v_nid), 'ranking saved');
+
+  delete from auth.users where id = q;   -- cascade interplay: must not error
+  perform pg_temp.chk((select count(*) = 0 from public.matches where nursery_id = v_nid), 'matches removed when partner is deleted');
+  perform pg_temp.chk((select count(*) = 0 from public.rankings where nursery_id = v_nid), 'rankings removed with them');
+  perform pg_temp.chk(exists (select 1 from public.nurseries where id = v_nid), 'nursery survives with its remaining member');
+
+  perform set_config('request.uid', r::text, true); set local role authenticated;
+  v_r := public.join_nursery(v_code);
+  reset role;
+  perform pg_temp.chk((v_r ->> 'ok')::boolean, 'new member joins');
+  insert into public.swipes (user_id, name_id, liked) values (r, v_x1, true), (r, v_x3, true);
+  perform set_config('request.uid', r::text, true); set local role authenticated;
+  perform pg_temp.chk((select count(*) = 1 and bool_and(name_id = v_x1) from public.shortlist_scores()), 'new member sees only matches with the remaining member');
+  reset role;
+
+  -- leave and re-join
+  perform set_config('request.uid', r::text, true); set local role authenticated;
+  perform public.leave_nursery();
+  reset role;
+  perform pg_temp.chk(not exists (select 1 from public.nursery_members where user_id = r), 'leave removes membership');
+  perform pg_temp.chk((select count(*) = 0 from public.matches where nursery_id = v_nid), 'matches cleared on leave');
+  perform set_config('request.uid', r::text, true); set local role authenticated;
+  ok := false; begin perform public.leave_nursery(); exception when sqlstate 'P0001' then ok := true; end;
+  perform pg_temp.chk(ok, 'leave without nursery raises');
+  v_r := public.join_nursery(v_code);
+  reset role;
+  perform pg_temp.chk((v_r ->> 'ok')::boolean and (select count(*) = 1 from public.matches where nursery_id = v_nid and name_id = v_x1), 're-join works and past likes re-match');
+
+  -- rotate
+  perform set_config('request.uid', p::text, true); set local role authenticated;
+  v_code2 := public.rotate_invite_code();
+  reset role;
+  perform pg_temp.chk(v_code2 <> v_code and v_code2 ~ '^BABY-[A-HJ-NP-Z2-9]{8}$' and (select invite_code = v_code2 from public.nurseries where id = v_nid), 'rotate gives a new code');
+  perform set_config('request.uid', t::text, true); set local role authenticated;
+  v_r := public.join_nursery(v_code);
+  reset role;
+  perform pg_temp.chk(not (v_r ->> 'ok')::boolean, 'old code stops working');
+  ok := false; set local role authenticated;
+  begin perform public.rotate_invite_code(); exception when sqlstate 'P0001' then ok := true; end;
+  reset role;
+  perform pg_temp.chk(ok, 'rotate by a non-member raises');
+
+  -- last members leave: nursery removed
+  perform set_config('request.uid', r::text, true); set local role authenticated; perform public.leave_nursery(); reset role;
+  perform pg_temp.chk(exists (select 1 from public.nurseries where id = v_nid), 'nursery stays while one member remains');
+  perform set_config('request.uid', p::text, true); set local role authenticated; perform public.leave_nursery(); reset role;
+  perform pg_temp.chk(not exists (select 1 from public.nurseries where id = v_nid), 'nursery deleted when the last member leaves');
+
+  -- deleting a whole nursery, and a last user, do not error
+  perform set_config('request.uid', p::text, true); set local role authenticated;
+  v_nid := (public.create_nursery('Gone')).id;
+  reset role;
+  select invite_code into v_code from public.nurseries where id = v_nid;
+  perform set_config('request.uid', q::text, true);
+  insert into auth.users (id, email) values (q, 'q2@t') on conflict do nothing;
+  set local role authenticated; perform public.join_nursery(v_code); reset role;
+  insert into public.swipes (user_id, name_id, liked) select u, (select id from public.names where name = 'ZT_14'), true from unnest(array[p, q]) u on conflict (user_id, name_id) do nothing;
+  delete from public.nurseries where id = v_nid;
+  perform pg_temp.chk(not exists (select 1 from public.nursery_members where user_id in (p, q)) and not exists (select 1 from public.matches where nursery_id = v_nid), 'deleting a nursery cascades cleanly');
+  perform set_config('request.uid', p::text, true); set local role authenticated;
+  v_nid := (public.create_nursery('Solo')).id;
+  reset role;
+  delete from auth.users where id = p;
+  perform pg_temp.chk(not exists (select 1 from public.nurseries where id = v_nid), 'deleting the last user removes the nursery');
+end $$;
+
 do $$ begin
   raise notice 'ALL % ASSERTIONS PASSED', current_setting('t.n');
 end $$;
