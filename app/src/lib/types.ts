@@ -60,3 +60,9 @@ export const TABS: { id: TabId; label: string }[] = [
   { id: 'shortlist', label: 'Shortlist' },
   { id: 'settings', label: 'Settings' },
 ]
+
+/** The meaning text, or null when it is missing or the seed says it is uncertain. */
+export function knownMeaning(meaning: string | null | undefined): string | null {
+  if (!meaning || meaning.trim() === '' || meaning.trim() === 'Meaning uncertain') return null
+  return meaning
+}

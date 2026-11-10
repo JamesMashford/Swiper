@@ -7,7 +7,7 @@ import {
   type PanInfo,
 } from 'framer-motion'
 import { useImperativeHandle, type Ref } from 'react'
-import type { NameCard } from '../lib/types'
+import { knownMeaning, type NameCard } from '../lib/types'
 
 export type CardHandle = { fly: (liked: boolean) => void }
 
@@ -97,10 +97,10 @@ export default function SwipeCard({ card, surname, isTop, onCommit, ref }: Props
       </div>
 
       <div className="mt-6 flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
-        {card.meaning && (
+        {knownMeaning(card.meaning) && (
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Meaning</p>
-            <p className="text-lg leading-snug text-neutral-800">{card.meaning}</p>
+            <p className="text-lg leading-snug text-neutral-800">{knownMeaning(card.meaning)}</p>
           </div>
         )}
         {card.blurb && <p className="text-base italic leading-snug text-neutral-500">{card.blurb}</p>}
