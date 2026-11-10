@@ -173,6 +173,7 @@ end $$;
 -- ---------------------------------------------------------------------------
 create temp table t_m as select row_number() over (order by name_id) as k, name_id as id
   from public.matches where nursery_id = '00000000-0000-0000-0000-00000000aaa1';
+grant select on t_ids, t_m to authenticated;
 
 do $$ declare v_a uuid := '00000000-0000-0000-0000-0000000000a1'; v_n1 uuid := '00000000-0000-0000-0000-00000000aaa1'; v_bad bigint; ok boolean; begin
   select id into v_bad from public.names where gender = 'boy' limit 1;
