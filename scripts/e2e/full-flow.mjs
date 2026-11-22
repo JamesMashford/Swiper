@@ -148,7 +148,18 @@ async function swipeOne(p, decide) {
   const label = await topLabel(p.page)
   const name = nameOf(label)
   const liked = decide(name)
-  await p.page.getByRole('button', { name: liked ? 'Like' : 'Dislike', exact: true }).click()
+  // A match overlay can open a moment after the previous swipe (Realtime delay), even while
+  // this click is waiting; the page behind it is inert, so dismiss it and retry the click.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await p.page.getByRole('button', { name: liked ? 'Like' : 'Dislike', exact: true }).click({ timeout: 4000 })
+      break
+    } catch (err) {
+      const text = await dismissDialog(p.page)
+      if (text) p.dialogs.push(text)
+      if (attempt >= 4) throw err
+    }
+  }
   await p.page.waitForFunction((prev) => {
     const el = document.querySelector('[data-testid=top-card]')
     return !el || el.getAttribute('aria-label') !== prev || !!document.querySelector('[role=dialog]')
@@ -214,13 +225,13 @@ await step('A creates a nursery and reaches the Swipe tab', async () => {
   await tab(A.page, 'Swipe').waitFor({ timeout: 15000 })
   await tab(A.page, 'Settings').click()
   code = (await A.page.getByTestId('invite-code').innerText()).trim()
-  expect(/^BABY-[A-Z0-9]{4}$/.test(code), `unexpected invite code "${code}"`)
+  expect(/^BABY-[A-Z0-9]{4,8}$/.test(code), `unexpected invite code "${code}"`)
   await tab(A.page, 'Swipe').click()
   return code
 })
 await step('B signs up and joins with the code', async () => {
   await signUp(B)
-  await B.page.getByPlaceholder('BABY-7K2Q').fill(code.toLowerCase())
+  await B.page.getByPlaceholder('BABY-7K2Q9XMD').fill(code.toLowerCase())
   await B.page.getByRole('button', { name: 'Join nursery' }).click()
   await tab(B.page, 'Swipe').waitFor({ timeout: 15000 })
 })
@@ -381,7 +392,7 @@ await step('shortlist_scores exposes only the caller\'s own numbers (no partner 
   const r = await apiFetch(B.page, '/rest/v1/rpc/shortlist_scores', { token: sessB.access_token, method: 'POST', body: {} })
   expect(r.status === 200 && r.json.length === aLiked.size, `HTTP ${r.status}, ${r.json?.length} rows`)
   const keys = Object.keys(r.json[0]).sort().join(',')
-  expect(keys === 'combined_rank,combined_score,gender,meaning,my_elo,my_position,name,name_id', `unexpected columns: ${keys}`)
+  expect(keys === 'combined_rank,gender,meaning,my_elo,my_position,name,name_id', `unexpected columns: ${keys}`)
 })
 await step('no console errors on either side', async () => {
   const e = [...A.errors, ...B.errors]
