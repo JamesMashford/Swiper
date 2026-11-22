@@ -144,3 +144,15 @@ Every finding below was fixed unless marked otherwise. "Re-verified" means the l
 Totals after the fixes: DB 487 assertions pass; UI suite 370 checks pass (185 at each viewport), 0 failures; axe reports no violations at 390x844 (not run at 360x640); `npm run build` passes; `npm run lint` shows only the one allowed warning.
 
 Still not tested: the full live flow (blocked until the SQL is applied; run `node scripts/e2e/full-flow.mjs` afterwards), the migration on the real project and real pgvector, real iPhone install, VoiceOver/TalkBack, non-Chromium browsers, and Realtime under poor mobile networks.
+
+---
+
+## Live run against the real project (20 Nov 2026)
+
+After the database update and seed were applied to the live Supabase project (305 names, 32 starters):
+
+- `scripts/e2e/full-flow.mjs`: **24 of 24 steps pass** with two real browser contexts (sign-up, create and join a nursery, starter deck, mutual likes, match overlay for both people via Realtime, Matches list, rank and reorder, head-to-head duels, couple's ranking, privacy checks, no console errors). The first runs failed because of three flaws in the script itself (it expected 4-character invite codes, it did not dismiss a match overlay that opens during a swipe, and it expected the removed `combined_score` column); no app bug was found.
+- Direct API checks on the live project (24 of 24 pass): 12 simultaneous likes from two partners produced all 6 matches (the race fix works live); the wrong-code and full-nursery messages are identical; an 11th join attempt is locked out; `rotate_invite_code` invalidates the old code; `leave_nursery` clears matches and a rejoin recomputes them; oversize surname and empty gender filter are rejected; a 20,000-character sign-up name is truncated to 60.
+- Settings in a real browser against the live project: New invite code and Leave nursery both work, with no console errors.
+
+Still not tested: real iPhone install, VoiceOver/TalkBack, non-Chromium browsers, load, email confirmation on, and the password minimum length (a Supabase dashboard setting).
