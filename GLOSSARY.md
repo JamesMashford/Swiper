@@ -4,6 +4,20 @@ Two expectant parents swipe on baby names and find the names they both like. Thi
 
 ## Language
 
+### Names
+
+**Name**:
+A given name for one gender. Charlie as a boy's name and Charlie as a girl's name are two separate names.
+_Avoid_: Entry, record, variant
+
+**Origin**:
+The language or cultural heritage a name comes from, such as Italian or Scandinavian.
+_Avoid_: Culture, ethnicity, nationality
+
+**Market**:
+A country or region (UK, US, Scandinavia, Italy, Brazil) whose public birth statistics say how popular a name is there.
+_Avoid_: Country, region, locale
+
 ### People and space
 
 **Nursery**:
