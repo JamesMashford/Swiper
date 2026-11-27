@@ -29,9 +29,15 @@ All functions are `security definer`, `set search_path = ''`, callable only by `
 - Duels are plain inserts: `supabase.from('duels').insert({ nursery_id, winner_name_id, loser_name_id })`.
 - Realtime: `public.matches` is in the `supabase_realtime` publication. Subscribe to `postgres_changes` `INSERT` on `matches` filtered `nursery_id=eq.<id>`.
 
+## Market filter (migration 20261127000000_market_and_portuguese_origin.sql)
+- Markets: `UK`, `US`, `Scandinavia`, `Italy`, `Brazil` (`public.markets`; `MARKETS` in `app/src/lib/types.ts`). Popularity per market is in `public.name_market_popularity(name_id, market, popularity > 0)`; a name is "in" a market when it has a row. `names.popularity` is unchanged until the import replaces it.
+- `nurseries.markets text[]` is an optional filter, default `{}` = all markets. Checks: at most 5 items, only valid market codes. Members can update it.
+- `suggest_names` applies it to the starter deck and the taste-ranked deck. Names with no market rows are served only to nurseries with no market filter.
+- `nurseries_origins_count` is now 20 (Portuguese made 20 origins).
+
 ## Starter name data contract
 Columns: `name`, `gender` (`boy`|`girl`|`neutral`), `origins` (values from the list below), `meaning` (one short plain sentence, no invented etymology: if unsure say "Meaning uncertain"), `style_tags` (values from the list below), `syllables`, `popularity` (1 to 100), `blurb` (one friendly line, max 90 characters), `is_starter` (about 30 names spread across genders, origins and styles).
-Origins: English, Irish, Scottish, Welsh, French, Spanish, Italian, German, Scandinavian, Greek, Latin, Hebrew, Arabic, Indian, Japanese, African, Slavic, Celtic, Other.
+Origins: English, Irish, Scottish, Welsh, French, Spanish, Italian, German, Scandinavian, Portuguese, Greek, Latin, Hebrew, Arabic, Indian, Japanese, African, Slavic, Celtic, Other.
 Style tags: classic, modern, vintage, nature, short, long, strong, soft, royal, literary, biblical, mythological, unisex-feel, playful, elegant.
 
 ## Front end
