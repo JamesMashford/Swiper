@@ -327,8 +327,9 @@ do $$ declare ok boolean; v_n1 uuid := '00000000-0000-0000-0000-00000000aaa1'; b
   perform pg_temp.chk(ok, '61-char surname rejected');
   update public.nurseries set surname = repeat('x', 60) where id = v_n1;
   perform pg_temp.chk(true, '60-char surname accepted');
-  ok := false; begin update public.nurseries set origins = array_fill('English'::text, array[20]) where id = v_n1; exception when check_violation then ok := true; end;
-  perform pg_temp.chk(ok, '20 origins rejected');
+  ok := false; begin update public.nurseries set origins = array_fill('English'::text, array[21]) where id = v_n1; exception when check_violation then ok := true; end;
+  -- Limit was 19 until migration 20261127000000 (Portuguese made it 20); 21 is the first rejected count.
+  perform pg_temp.chk(ok, '21 origins rejected');
   ok := false; begin update public.profiles set display_name = repeat('y', 61) where id = '00000000-0000-0000-0000-0000000000a1'; exception when check_violation then ok := true; end;
   perform pg_temp.chk(ok, '61-char display name rejected');
   update public.nurseries set surname = '' where id = v_n1;

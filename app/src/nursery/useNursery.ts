@@ -8,6 +8,8 @@ export type Nursery = {
   surname: string
   genders: string[]
   origins: string[]
+  /** Market filter. Empty means all markets. */
+  markets: string[]
 }
 
 export type Member = { user_id: string; display_name: string }
@@ -42,7 +44,8 @@ export function useNursery(userId: string) {
         }))
       }
       // Nursery and members land together, so screens never see one without the other.
-      setNursery(n)
+      // `markets` only exists once the market migration is applied; treat a missing one as "all".
+      setNursery(n ? { ...n, markets: n.markets ?? [] } : n)
       setMembers(list)
       setError(null)
       setLoaded(true)

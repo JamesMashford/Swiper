@@ -6,9 +6,12 @@ export const GENDERS: Gender[] = ['boy', 'girl', 'neutral']
 
 export const ORIGINS = [
   'English', 'Irish', 'Scottish', 'Welsh', 'French', 'Spanish', 'Italian', 'German',
-  'Scandinavian', 'Greek', 'Latin', 'Hebrew', 'Arabic', 'Indian', 'Japanese', 'African',
-  'Slavic', 'Celtic', 'Other',
+  'Scandinavian', 'Portuguese', 'Greek', 'Latin', 'Hebrew', 'Arabic', 'Indian', 'Japanese',
+  'African', 'Slavic', 'Celtic', 'Other',
 ] as const
+
+/** Markets a nursery can filter by. Must match `public.markets` in the database. */
+export const MARKETS = ['UK', 'US', 'Scandinavia', 'Italy', 'Brazil'] as const
 
 export const STYLE_TAGS = [
   'classic', 'modern', 'vintage', 'nature', 'short', 'long', 'strong', 'soft', 'royal',

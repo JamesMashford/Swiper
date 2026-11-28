@@ -1,7 +1,7 @@
 import { useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { friendlyError } from '../lib/errors'
 import { supabase } from '../lib/supabase'
-import { GENDERS, ORIGINS, type ScreenProps } from '../lib/types'
+import { GENDERS, MARKETS, ORIGINS, type ScreenProps } from '../lib/types'
 
 const card = 'rounded-xl border border-neutral-200 bg-white p-4'
 const field =
@@ -70,6 +70,7 @@ export default function SettingsScreen({
   const setDisplayName = setNameDraft
   const [genders, setGenders] = useState<string[]>(nursery.genders)
   const [origins, setOrigins] = useState<string[]>(nursery.origins)
+  const [markets, setMarkets] = useState<string[]>(nursery.markets)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<Record<string, string>>({})
@@ -173,7 +174,10 @@ export default function SettingsScreen({
     setGenders(toggle(genders, g))
   }
 
-  const filtersChanged = !sameSet(genders, nursery.genders) || !sameSet(origins, nursery.origins)
+  const filtersChanged =
+    !sameSet(genders, nursery.genders) ||
+    !sameSet(origins, nursery.origins) ||
+    !sameSet(markets, nursery.markets)
 
   const saveFilters = () =>
     run(
@@ -181,7 +185,7 @@ export default function SettingsScreen({
       async () => {
         const { error: err } = await supabase
           .from('nurseries')
-          .update({ genders, origins })
+          .update({ genders, origins, markets })
           .eq('id', nursery.id)
         if (err) return friendlyError(err.message)
         await refreshNursery()
@@ -336,6 +340,23 @@ export default function SettingsScreen({
                 label={o}
                 selected={origins.includes(o)}
                 onClick={() => setOrigins(toggle(origins, o))}
+              />
+            ))}
+          </div>
+        </fieldset>
+        <fieldset className="flex flex-col gap-2">
+          <legend className="mb-1 text-sm font-medium">Market (none selected = all markets)</legend>
+          <p className="text-sm text-neutral-600">
+            Names that are popular in the markets you pick. Names we have no market data for are
+            still shown.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {MARKETS.map((m) => (
+              <Chip
+                key={m}
+                label={m}
+                selected={markets.includes(m)}
+                onClick={() => setMarkets(toggle(markets, m))}
               />
             ))}
           </div>
