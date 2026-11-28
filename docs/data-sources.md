@@ -2,7 +2,19 @@
 
 Research for issue #5 (part of #4). Public national statistics are the only name data source (see #4).
 
-**Status: INCOMPLETE. A human must sign off on every licence. No licence has been verified.**
+**Status: INCOMPLETE. A human must sign off on every licence. Only the ONS licence text has been read (from the file ONS supplies); the other six are unverified.**
+
+## Update: read from supplied files and pages
+
+These were read directly (the user uploaded the SSA zip, the ONS workbook and a Norway-style CSV, and the allowed hosts later became reachable):
+
+- 🟢 **ONS licence (read in the cover sheet of `babynames1996to2025.xlsx`, released 09 July 2025):** "You may re-use this publication (not including logos) free of charge in any format or medium, under the terms of the Open Government Licence." and "Users should include a source accreditation to ONS - Source: Office for National Statistics licensed under the Open Government Licence." Also "© Crown copyright 2026". Names with a count of 2 or less are redacted. Tables: `Table_1` girls, `Table_2` boys, columns `Name`, then `<year> Rank` and `<year> Count` per year, 1996 to 2025. Exact spellings are kept, so respellings are separate names.
+- 🟢 **SSA format (read in `NationalReadMe.pdf` inside `names.zip`):** one `yobYYYY.txt` per year, "name,sex,number", name 2 to 15 characters, sex M or F, "at least 5 occurrences" kept, tabulated from Social Security records as of March 1, 2026. 🟠 The readme has no licence statement; none seen elsewhere.
+- 🟢 **Brazil IBGE API (called directly):** `https://servicodados.ibge.gov.br/api/v2/censos/nomes/ranking` returns JSON, `[{localidade, sexo, res: [{nome, frequencia, ranking}]}]`, top 20 per call; query parameters `sexo` (F or M) and `decada` work. Names come back uppercase and without accents. 🟠 No licence seen.
+- 🟢 **Denmark DST (read at <https://www.dst.dk/en/Statistik/emner/borgere/navne/navne-til-nyfoedte>):** newborn names from 1985, from the civil registration system (CPR); "For reasons of discretion, the exact number is not shown in case of names held by fewer than three persons."; the Top 50 groups spellings (Karl and Carl). The Top 50 table is loaded by the page from `/DstDk-Global/sider/ajax.aspx?controlid={E53ECEF3-D45A-4245-9544-1DE42E43A5D6}` with `p1=2025_2`; columns Nr, Navn, Antal, Pr. 1 000. 🟢 No name tables exist in the Statbank API (searched by name). 🟠 No reuse terms seen.
+- 🟢 **Sweden:** Skatteverket's 2023 top 100 is republished with counts by a third-party site (<https://hejsweden.com/en/popular-swedish-girl-and-boy-names/>, which says the list is from Skatteverket). 🟠 That is a secondary copy; the official page was not read. Its terms are unverified.
+- 🟢 **Italy:** only a third-party ranking without counts was found (<https://euronamecheck.eu/top/italy>, ranks 1 to 30 per sex). Istat's own page offers an interactive counter only. 🟠 Terms unverified.
+- 🟢 **Norway:** a supplied CSV (`;`-separated: name, Number, Per 1 000; top 10 per sex, 2025). The file does not name its country or publisher; 🟠 Norway (SSB) is an inference from the counts. Terms unverified.
 
 ## How this was researched, and the limit of it
 
