@@ -64,8 +64,15 @@ Marking used in this file: 🟢 = stated by a search-result summary that cites t
 - **URLs:** 🟢 SCB name statistics (archive): <https://www.scb.se/hitta-statistik/statistik-efter-amne/befolkning-och-levnadsforhallanden/ovrigt/namnstatistik/>; Skatteverket: <https://www.skatteverket.se/omoss/varverksamhet/statistikportalen/namnpanyfodda.4.7da1d2e118be03f8e4f5b9d.html>.
 - **Format and columns:** 🟠 UNVERIFIED. Whether a bulk download exists was not established; the Skatteverket portal is interactive.
 - **Licence:** 🟠 UNVERIFIED for both SCB and Skatteverket.
-- **Open question for the human:** which agency is the source of record for Sweden, and is a downloadable file available.
-- **Evidence:** web search summary only.
+- **Decision (repo owner, 2026-11-28): SCB is the source of record for Sweden.** 🟠 This means data up to 2022 only, because SCB no longer updates it; newer years would need Skatteverket.
+- 🟢 **Read on <https://www.scb.se/hitta-statistik/statistik-efter-amne/befolkning-och-levnadsforhallanden/ovrigt/namnstatistik/>:** "Från och med 2024 slutar vi producera namnstatistik." (From 2024 we stop producing name statistics.) It lists top-100 tables for newborn girls and boys 2022, an Excel file "Namn – nyfödda flickor och pojkar 1998–2021", alphabetical lists "Flicknamn 1998–2022" and "Pojknamn 1998–2022", and Statistikdatabasen tables (for example `BE0001Nyfodda`: newborns, first names by year of naming and sex, 1998–2022).
+- 🟢 **SCB terms, read on <https://www.scb.se/om-scb/om-scb.se-och-anvandningsvillkor/> (Swedish):**
+  - "Statistik och geodata som SCB tillgängliggör som öppna data i statistikdatabasen och i vår geodataplattform har licensen Creative commons 0 1.0 Universal, CC0."
+  - "För allt övrigt material på SCB:s webbplats används licensen Creative Commons Erkännande 4.0 Internationell (CC BY). [...] Om du använder eller sprider statistik från scb.se ska dock som källa alltid SCB anges (”Källa: SCB” alternativt ”Källa: Statistiska centralbyrån”, i internationella sammanhang får i stället ”Source: Statistics Sweden” användas)."
+  - "Om du själv bearbetar statistik från SCB:s webbplats får du inte ange SCB som källa." (If you process SCB statistics yourself you may not name SCB as the source.)
+  - Translation (mine, 🟠): the Statistikdatabasen open data is CC0; other site material is CC BY 4.0 with "Source: Statistics Sweden" as the credit; processed data must not be credited to SCB as the source.
+- 🟠 Which licence applies to the Excel file and the Statistikdatabasen tables was not checked individually. Exact columns of the Excel file and tables were not opened.
+- **Evidence:** page text read directly (SCB); hejsweden is a secondary copy of Skatteverket's 2023 list.
 
 ## Norway: Statistics Norway (SSB)
 
@@ -100,12 +107,27 @@ Marking used in this file: 🟢 = stated by a search-result summary that cites t
 - **Licence:** 🟠 UNVERIFIED.
 - **Evidence:** web search summary only.
 
+## Attribution lines (generic, modelled on ONS)
+
+🟠 These are generic credits in the style ONS asks for, not wording the agencies prescribed, except ONS and SCB (read above). The app should show one credits line listing the markets in use.
+
+| Source | Line |
+|---|---|
+| ONS | Source: Office for National Statistics licensed under the Open Government Licence. (ONS's own wording) |
+| SCB | Source: Statistics Sweden. (SCB's wording for international use; do not use it to credit data you have processed) |
+| US SSA | Source: US Social Security Administration. |
+| SSB | Source: Statistics Norway. |
+| DST | Source: Statistics Denmark. |
+| Istat | Source: Istat (Italian National Institute of Statistics). |
+| IBGE | Source: IBGE (Brazilian Institute of Geography and Statistics), 2010 Census. |
+
 ## Sign-off checklist (for the human)
 
 - [x] Licences read and approved by the repo owner for all seven sources (2026-11-28, stated in chat).
 - [ ] Quote each licence or reuse wording here, with the link, and note any attribution required (ONS requires: "Source: Office for National Statistics licensed under the Open Government Licence.").
 - [ ] Confirm each source's real download format and columns.
-- [ ] Decide Sweden (SCB vs Skatteverket), Denmark (is a bulk download available) and Italy (no bulk file found yet).
+- [x] Sweden: SCB is the source of record (owner, 2026-11-28).
+- [ ] Decide Denmark (no bulk download found; the Top 50 comes from a page endpoint) and Italy (no bulk file found yet).
 - [ ] Remove any source whose terms do not allow a free personal project, or note attribution needed.
 
 Licence sign-off is recorded above. Issue #5 stays open and keeps its `ready-for-human` label until the owner changes it.
