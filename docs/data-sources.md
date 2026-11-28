@@ -2,7 +2,7 @@
 
 Research for issue #5 (part of #4). Public national statistics are the only name data source (see #4).
 
-**Status: INCOMPLETE. A human must sign off on every licence. Only the ONS licence text has been read (from the file ONS supplies); the other six are unverified.**
+**Status: licences signed off by the repo owner (2026-11-28), who said in chat that they read the terms for all seven sources and that they "look good". The wording was not recorded here, and the notes below still mark which terms Claude itself read (only ONS) and which it did not. Add the quotes and attribution lines from each source before any data is imported or shipped.**
 
 ## Update: read from supplied files and pages
 
@@ -102,9 +102,10 @@ Marking used in this file: 🟢 = stated by a search-result summary that cites t
 
 ## Sign-off checklist (for the human)
 
-- [ ] Read each linked page and quote the licence or reuse wording here, with the link.
+- [x] Licences read and approved by the repo owner for all seven sources (2026-11-28, stated in chat).
+- [ ] Quote each licence or reuse wording here, with the link, and note any attribution required (ONS requires: "Source: Office for National Statistics licensed under the Open Government Licence.").
 - [ ] Confirm each source's real download format and columns.
 - [ ] Decide Sweden (SCB vs Skatteverket), Denmark (is a bulk download available) and Italy (no bulk file found yet).
 - [ ] Remove any source whose terms do not allow a free personal project, or note attribution needed.
 
-Until this is done, issue #5 stays open and keeps its `ready-for-human` label.
+Licence sign-off is recorded above. Issue #5 stays open and keeps its `ready-for-human` label until the owner changes it.
