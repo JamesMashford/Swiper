@@ -71,7 +71,8 @@ Marking used in this file: 🟢 = stated by a search-result summary that cites t
   - "För allt övrigt material på SCB:s webbplats används licensen Creative Commons Erkännande 4.0 Internationell (CC BY). [...] Om du använder eller sprider statistik från scb.se ska dock som källa alltid SCB anges (”Källa: SCB” alternativt ”Källa: Statistiska centralbyrån”, i internationella sammanhang får i stället ”Source: Statistics Sweden” användas)."
   - "Om du själv bearbetar statistik från SCB:s webbplats får du inte ange SCB som källa." (If you process SCB statistics yourself you may not name SCB as the source.)
   - Translation (mine, 🟠): the Statistikdatabasen open data is CC0; other site material is CC BY 4.0 with "Source: Statistics Sweden" as the credit; processed data must not be credited to SCB as the source.
-- 🟠 Which licence applies to the Excel file and the Statistikdatabasen tables was not checked individually. Exact columns of the Excel file and tables were not opened.
+- 🟢 **SCB Excel file opened** (`Namn – nyfödda flickor och pojkar 1998–2021`, served directly by the page URL ending `/namn--nyfodda-flickor-och-pojkar-19982021/`): one sheet per sex and year ("Flickor 2021", "Pojkar 2021", ...), plus an "Innehåll" sheet. Each sheet holds the 100 most common first names for that sex and year, shown "under den vanligaste stavningen", with counts that include all alternative spellings. Columns on the ranking side: ranking this year, ranking previous year, name, count this year, count previous year (a second alphabetical block sits to the right). Years covered: 1998 to 2021.
+- 🟠 Which of CC0 or CC BY applies to the Excel file was not checked individually; the Statistikdatabasen tables were not opened.
 - **Evidence:** page text read directly (SCB); hejsweden is a secondary copy of Skatteverket's 2023 list.
 
 ## Norway: Statistics Norway (SSB)
@@ -127,7 +128,8 @@ Marking used in this file: 🟢 = stated by a search-result summary that cites t
 - [ ] Quote each licence or reuse wording here, with the link, and note any attribution required (ONS requires: "Source: Office for National Statistics licensed under the Open Government Licence.").
 - [ ] Confirm each source's real download format and columns.
 - [x] Sweden: SCB is the source of record (owner, 2026-11-28).
-- [ ] Decide Denmark (no bulk download found; the Top 50 comes from a page endpoint) and Italy (no bulk file found yet).
+- [x] Denmark: use the DST page <https://www.dst.dk/en/Statistik/emner/borgere/navne/navne-til-nyfoedte> (top 50 per sex; owner's decision, 2026-11-28, "doesn't need to be perfect").
+- [x] Italy: use the list at <https://euronamecheck.eu/top/italy> (ranks only, no counts; owner's decision, same date). 🟠 It is a third-party page, not Istat; its terms were not read.
 - [ ] Remove any source whose terms do not allow a free personal project, or note attribution needed.
 
 Licence sign-off is recorded above. Issue #5 stays open and keeps its `ready-for-human` label until the owner changes it.
