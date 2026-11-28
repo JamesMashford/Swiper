@@ -32,7 +32,7 @@ All functions are `security definer`, `set search_path = ''`, callable only by `
 ## Market filter (migration 20261127000000_market_and_portuguese_origin.sql)
 - Markets: `UK`, `US`, `Scandinavia`, `Italy`, `Brazil` (`public.markets`; `MARKETS` in `app/src/lib/types.ts`). Popularity per market is in `public.name_market_popularity(name_id, market, popularity > 0)`; a name is "in" a market when it has a row. `names.popularity` is unchanged until the import replaces it.
 - `nurseries.markets text[]` is an optional filter, default `{}` = all markets. Checks: at most 5 items, only valid market codes. Members can update it.
-- `suggest_names` applies it to the starter deck and the taste-ranked deck. Names with no market rows are served only to nurseries with no market filter.
+- `suggest_names` applies it to the starter deck and the taste-ranked deck. A name with no market rows at all passes any market filter (no per-market data exists until the import); a name that has market rows but none in the nursery's markets is never served.
 - `nurseries_origins_count` is now 20 (Portuguese made 20 origins).
 
 ## Starter name data contract

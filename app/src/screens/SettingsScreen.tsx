@@ -347,8 +347,8 @@ export default function SettingsScreen({
         <fieldset className="flex flex-col gap-2">
           <legend className="mb-1 text-sm font-medium">Market (none selected = all markets)</legend>
           <p className="text-sm text-neutral-600">
-            Only names that are popular in the markets you pick. Names without market data are left
-            out while a market is selected.
+            Names that are popular in the markets you pick. Names we have no market data for are
+            still shown.
           </p>
           <div className="flex flex-wrap gap-2">
             {MARKETS.map((m) => (

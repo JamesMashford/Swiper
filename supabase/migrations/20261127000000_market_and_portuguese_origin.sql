@@ -9,8 +9,10 @@
 -- * nurseries.markets: optional filter, empty = all markets (the default).
 -- * suggest_names applies it, in the starter deck as well as the taste-ranked deck.
 --
--- Names with no market rows (all current names: no per-market data exists yet) are served
--- only to nurseries with no market filter, until the import fills the table.
+-- A Name that has no market rows at all (every current name: no per-market data exists yet)
+-- passes any market filter, so a nursery that picks a market still gets a deck until the
+-- import fills the table. A Name that has market rows, none of them in the nursery's
+-- markets, is never served to that nursery.
 
 -- ---------------------------------------------------------------------------
 -- Origin limit: 19 origins before, 20 now that Portuguese exists
@@ -61,20 +63,24 @@ alter table public.nurseries add constraint nurseries_markets_valid
 grant update (markets) on public.nurseries to authenticated;
 
 -- ---------------------------------------------------------------------------
--- Internal helper: is this name popular in any of these markets?
+-- Internal helper: may this name be served to a nursery restricted to these markets?
+-- True when the name has no market data at all, or is popular in at least one of them.
 -- ---------------------------------------------------------------------------
-create function public.name_in_markets(p_name_id bigint, p_markets text[])
+create function public.name_allowed_in_markets(p_name_id bigint, p_markets text[])
 returns boolean
 language sql
 stable
 set search_path = ''
 as $$
-  select exists (
-    select 1 from public.name_market_popularity p
-    where p.name_id = p_name_id and p.market = any (p_markets)
-  );
+  select not exists (
+           select 1 from public.name_market_popularity p where p.name_id = p_name_id
+         )
+      or exists (
+           select 1 from public.name_market_popularity p
+           where p.name_id = p_name_id and p.market = any (p_markets)
+         );
 $$;
-revoke execute on function public.name_in_markets(bigint, text[]) from public, anon, authenticated;
+revoke execute on function public.name_allowed_in_markets(bigint, text[]) from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- suggest_names: unchanged apart from the market filter (copied from 20261110000000, with
@@ -133,7 +139,7 @@ begin
     from public.names nm
     where nm.gender = any (v_genders)
       and (cardinality(v_origins) = 0 or nm.origins && v_origins)
-      and (cardinality(v_markets) = 0 or public.name_in_markets(nm.id, v_markets))
+      and (cardinality(v_markets) = 0 or public.name_allowed_in_markets(nm.id, v_markets))
       and not exists (
         select 1 from public.swipes s where s.user_id = v_user and s.name_id = nm.id
       )
@@ -184,7 +190,7 @@ begin
     from public.names nm
     where nm.gender = any (v_genders)
       and (cardinality(v_origins) = 0 or nm.origins && v_origins)
-      and (cardinality(v_markets) = 0 or public.name_in_markets(nm.id, v_markets))
+      and (cardinality(v_markets) = 0 or public.name_allowed_in_markets(nm.id, v_markets))
       and not exists (
         select 1 from public.swipes s where s.user_id = v_user and s.name_id = nm.id
       )
