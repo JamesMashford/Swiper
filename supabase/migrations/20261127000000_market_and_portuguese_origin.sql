@@ -242,52 +242,5 @@ begin
 end;
 $$;
 
--- ---------------------------------------------------------------------------
--- save_ranking: replace the caller's ranking for their nursery (index 0 = favourite)
--- ---------------------------------------------------------------------------
-create or replace function public.save_ranking(p_name_ids bigint[])
-returns void
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  v_user uuid := auth.uid();
-  v_nursery uuid;
-begin
-  if v_user is null then
-    raise exception 'Not signed in' using errcode = '28000';
-  end if;
-  if p_name_ids is null then
-    raise exception 'Ranking is required' using errcode = '22023';
-  end if;
-
-  select m.nursery_id into v_nursery
-  from public.nursery_members m where m.user_id = v_user;
-  if v_nursery is null then
-    raise exception 'You are not in a nursery' using errcode = 'P0001';
-  end if;
-
-  if array_position(p_name_ids, null) is not null
-     or (select count(distinct x) from unnest(p_name_ids) as x) <> cardinality(p_name_ids) then
-    raise exception 'Ranking contains duplicate or empty ids' using errcode = '22023';
-  end if;
-
-  if exists (
-    select 1 from unnest(p_name_ids) as x
-    where not exists (
-      select 1 from public.matches mt where mt.nursery_id = v_nursery and mt.name_id = x
-    )
-  ) then
-    raise exception 'Ranking contains names that are not matches' using errcode = '22023';
-  end if;
-
-  delete from public.rankings r where r.nursery_id = v_nursery and r.user_id = v_user;
-
-  insert into public.rankings (nursery_id, user_id, name_id, position)
-  select v_nursery, v_user, x.id, (x.ord - 1)::int
-  from unnest(p_name_ids) with ordinality as x (id, ord);
-end;
-$$;
 revoke execute on function public.suggest_names(int) from public, anon;
 grant execute on function public.suggest_names(int) to authenticated;
